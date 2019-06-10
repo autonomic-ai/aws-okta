@@ -20,6 +20,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/segmentio/aws-okta/lib/saml"
+	"github.com/segmentio/aws-okta/lib/util"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -189,6 +190,8 @@ func (o *OktaClient) AuthenticateProfile(profileARN string, duration time.Durati
 
 	// Attempt to reuse session cookie
 	var assertion SAMLAssertion
+	var principal, role string
+
 	err := o.Get("GET", o.OktaAwsSAMLUrl, nil, &assertion, "saml")
 	if err != nil {
 		log.Debug("Failed to reuse session token, starting flow from start")
@@ -204,12 +207,15 @@ func (o *OktaClient) AuthenticateProfile(profileARN string, duration time.Durati
 			return sts.Credentials{}, "", err
 		}
 	}
-
-	principal, role, err := GetRoleFromSAML(assertion.Resp, profileARN)
+	roleList, err := assertion.Resp.GetAssumableRolesFromSAML()
 	if err != nil {
 		return sts.Credentials{}, "", err
 	}
 
+	role, principal, err = roleList.GetRole(profileARN)
+	if err != nil {
+		return sts.Credentials{}, "", err
+	}
 	// Step 4 : Assume Role with SAML
 	samlSess := session.Must(session.NewSession())
 	svc := sts.New(samlSess)
@@ -277,7 +283,7 @@ func (o *OktaClient) selectMFADevice() (*OktaUserAuthnFactor, error) {
 	for i, f := range factors {
 		log.Infof("%d: %s (%s)", i, f.Provider, f.FactorType)
 	}
-	i, err := Prompt("Select MFA method", false)
+	i, err := util.Prompt("Select MFA method", false)
 	if i == "" {
 		return nil, errors.New("Invalid selection - Please use an option that is listed")
 	}
@@ -300,7 +306,7 @@ func (o *OktaClient) preChallenge(oktaFactorId, oktaFactorType string) ([]byte, 
 	//Software and Hardware based OTP Tokens
 	if strings.Contains(oktaFactorType, "token") {
 		log.Debug("Token MFA")
-		mfaCode, err = Prompt("Enter MFA Code", false)
+		mfaCode, err = util.Prompt("Enter MFA Code", false)
 		if err != nil {
 			return nil, err
 		}
@@ -320,7 +326,7 @@ func (o *OktaClient) preChallenge(oktaFactorId, oktaFactorType string) ([]byte, 
 		if err != nil {
 			return nil, err
 		}
-		mfaCode, err = Prompt("Enter MFA Code from SMS", false)
+		mfaCode, err = util.Prompt("Enter MFA Code from SMS", false)
 		if err != nil {
 			return nil, err
 		}

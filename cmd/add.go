@@ -9,6 +9,7 @@ import (
 	"github.com/99designs/keyring"
 	analytics "github.com/segmentio/analytics-go"
 	"github.com/segmentio/aws-okta/lib"
+	"github.com/segmentio/aws-okta/lib/util"
 	"github.com/spf13/cobra"
 )
 
@@ -55,12 +56,12 @@ func add(cmd *cobra.Command, args []string) error {
 
 	// Ask Okta organization details if not given in command line argument
 	if oktaDomain == "" {
-		organization, err = lib.Prompt("Okta organization", false)
+		organization, err = util.Prompt("Okta organization", false)
 		if err != nil {
 			return err
 		}
 
-		oktaRegion, err = lib.Prompt("Okta region ([us], emea, preview)", false)
+		oktaRegion, err = util.Prompt("Okta region ([us], emea, preview)", false)
 		if err != nil {
 			return err
 		}
@@ -74,7 +75,7 @@ func add(cmd *cobra.Command, args []string) error {
 		}
 		defaultOktaDomain := fmt.Sprintf("%s.%s", organization, tld)
 
-		oktaDomain, err = lib.Prompt("Okta domain ["+defaultOktaDomain+"]", false)
+		oktaDomain, err = util.Prompt("Okta domain ["+defaultOktaDomain+"]", false)
 		if err != nil {
 			return err
 		}
@@ -84,14 +85,14 @@ func add(cmd *cobra.Command, args []string) error {
 	}
 
 	if username == "" {
-		username, err = lib.Prompt("Okta username", false)
+		username, err = util.Prompt("Okta username", false)
 		if err != nil {
 			return err
 		}
 	}
 
 	// Ask for password from prompt
-	password, err := lib.Prompt("Okta password", true)
+	password, err := util.Prompt("Okta password", true)
 	if err != nil {
 		return err
 	}
