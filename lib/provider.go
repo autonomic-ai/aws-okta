@@ -163,7 +163,7 @@ func (p *Provider) getSamlSessionCreds() (sts.Credentials, error) {
 
 	profileARN, ok := p.profiles[source]["role_arn"]
 	if !ok {
-		return sts.Credentials{}, errors.New("Source profile must provide `role_arn`")
+		profileARN = ""
 	}
 
 	provider := OktaProvider{
@@ -194,7 +194,7 @@ func (p *Provider) GetSAMLLoginURL() (*url.URL, error) {
 
 	profileARN, ok := p.profiles[source]["role_arn"]
 	if !ok {
-		return &url.URL{}, errors.New("Source profile must provide `role_arn`")
+		profileARN = ""
 	}
 
 	provider := OktaProvider{

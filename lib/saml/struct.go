@@ -2,6 +2,15 @@ package saml
 
 import "encoding/xml"
 
+type AssumableRole struct {
+	Role      string
+	Principal string
+}
+
+type AssumableRoles struct {
+	Roles []AssumableRole
+}
+
 type Response struct {
 	XMLName      xml.Name
 	SAMLP        string `xml:"xmlns:samlp,attr"`
