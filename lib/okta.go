@@ -388,11 +388,15 @@ func (o *OktaClient) postChallenge(payload []byte, oktaFactorProvider string, ok
 			log.Debug("  CredentialId: ", f.Profile.CredentialId)
 			log.Debug("  StateToken: ", o.UserAuth.StateToken)
 
-			fidoClient := mfa.NewFidoClient(f.Embedded.Challenge.Nonce,
+			fidoClient, err := mfa.NewFidoClient(f.Embedded.Challenge.Nonce,
 				f.Profile.AppId,
 				f.Profile.Version,
 				f.Profile.CredentialId,
 				o.UserAuth.StateToken)
+			if err != nil {
+				return err
+			}
+
 			SignedAssertion, err := fidoClient.ChallengeU2f()
 			if err != nil {
 				return err

@@ -15,6 +15,10 @@ const (
 	RetryDelayMS   = 200 * time.Millisecond
 )
 
+var (
+	errNoDeviceFound = fmt.Errorf("no U2F devices found. device might not be plugged in")
+)
+
 type FidoClient struct {
 	ChallengeNonce string
 	AppId          string
@@ -30,41 +34,34 @@ type SignedAssertion struct {
 	SignatureData string `json:"signatureData"`
 }
 
-func NewFidoClient(challengeNonce, appId, version, keyHandle, stateToken string) FidoClient {
-	// Filter only the devices that can be opened.
-	openDevices := []u2fhost.Device{}
-	allDevices := u2fhost.Devices()
-	for i, device := range allDevices {
-		log.Debug("Test Open for device: ", device)
+func NewFidoClient(challengeNonce, appId, version, keyHandle, stateToken string) (FidoClient, error) {
+	var device u2fhost.Device
+	var err error
 
-		retry_count := 0
-		for retry_count < MaxOpenRetries {
-			err := device.Open()
-			if err == nil {
-				openDevices = append(openDevices, allDevices[i])
-				defer func(i int) {
-					allDevices[i].Close()
-				}(i)
-				break
-			} else {
-				log.Debug(err)
-				retry_count += 1
-				time.Sleep(RetryDelayMS)
+	retryCount := 0
+	for retryCount < MaxOpenRetries {
+		device, err = findDevice()
+		if err != nil {
+			if err == errNoDeviceFound {
+				return FidoClient{}, err
 			}
+
+			retryCount++
+			time.Sleep(RetryDelayMS)
+			continue
 		}
+
+		return FidoClient{
+			Device:         device,
+			ChallengeNonce: challengeNonce,
+			AppId:          appId,
+			Version:        version,
+			KeyHandle:      keyHandle,
+			StateToken:     stateToken,
+		}, nil
 	}
-	if len(openDevices) != 1 {
-		log.Debug("Got ", len(openDevices), " expecting 1 ")
-		return FidoClient{}
-	}
-	return FidoClient{
-		Device:         openDevices[0],
-		ChallengeNonce: challengeNonce,
-		AppId:          appId,
-		Version:        version,
-		KeyHandle:      keyHandle,
-		StateToken:     stateToken,
-	}
+
+	return FidoClient{}, fmt.Errorf("failed to create client: %s. exceeded max retries of %d", err, MaxOpenRetries)
 }
 
 func (d *FidoClient) ChallengeU2f() (*SignedAssertion, error) {
@@ -103,22 +100,45 @@ func (d *FidoClient) ChallengeU2f() (*SignedAssertion, error) {
 					ClientData:    response.ClientData,
 					SignatureData: response.SignatureData,
 				}
-				fmt.Println("  ==> Touch accepted. Proceeding with authentication\n")
+				fmt.Printf("  ==> Touch accepted. Proceeding with authentication\n")
 				return responsePayload, nil
-			} else {
-				switch t := err.(type) {
-				case *u2fhost.TestOfUserPresenceRequiredError:
-					if !prompted {
-						fmt.Println("\nTouch the flashing U2F device to authenticate...\n")
-						prompted = true
-					}
-				default:
-					log.Debug("Got ErrType: ", t)
-					return responsePayload, err
-				}
 			}
 
+			switch t := err.(type) {
+			case *u2fhost.TestOfUserPresenceRequiredError:
+				if !prompted {
+					fmt.Printf("\nTouch the flashing U2F device to authenticate...\n")
+					prompted = true
+				}
+			default:
+				log.Debug("Got ErrType: ", t)
+				return responsePayload, err
+			}
 		}
 	}
+
 	return responsePayload, nil
+}
+
+func findDevice() (u2fhost.Device, error) {
+	var err error
+
+	allDevices := u2fhost.Devices()
+	if len(allDevices) == 0 {
+		return nil, errNoDeviceFound
+	}
+
+	for i, device := range allDevices {
+		err = device.Open()
+		if err != nil {
+			log.Debugf("failed to open device: %s", err)
+			device.Close()
+
+			continue
+		}
+
+		return allDevices[i], nil
+	}
+
+	return nil, fmt.Errorf("failed to open fido U2F device: %s", err)
 }
