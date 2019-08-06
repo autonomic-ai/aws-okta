@@ -12,14 +12,6 @@ $ go get github.com/segmentio/aws-okta
 
 [See the wiki for more installation options like Linux packages and precompiled binaries.](https://github.com/segmentio/aws-okta/wiki/Installation)
 
-### MacOS
-
-You can install with `brew`:
-
-```bash
-$ brew install aws-okta
-```
-
 ### Windows
 
 See [docs/windows.md](docs/windows.md) for information on getting this working with Windows.
