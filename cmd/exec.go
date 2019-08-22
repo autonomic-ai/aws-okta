@@ -24,11 +24,11 @@ var (
 )
 
 func mustListProfiles() lib.Profiles {
-  profiles, err := listProfiles()
-  if err != nil {
-    log.Panicf("Failed to list profiles: %v", err)
-  }
-  return profiles
+	profiles, err := listProfiles()
+	if err != nil {
+		log.Panicf("Failed to list profiles: %v", err)
+	}
+	return profiles
 }
 
 // execCmd represents the exec command
@@ -176,6 +176,11 @@ func execRun(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	role, err := p.GetRole()
+	if err != nil {
+		return err
+	}
+
 	env := environ(os.Environ())
 	env.Unset("AWS_ACCESS_KEY_ID")
 	env.Unset("AWS_SECRET_ACCESS_KEY")
@@ -192,6 +197,7 @@ func execRun(cmd *cobra.Command, args []string) error {
 	env.Set("AWS_ACCESS_KEY_ID", creds.AccessKeyID)
 	env.Set("AWS_SECRET_ACCESS_KEY", creds.SecretAccessKey)
 	env.Set("AWS_OKTA_PROFILE", profile)
+	env.Set("AWS_ROLE", role)
 
 	if creds.SessionToken != "" {
 		env.Set("AWS_SESSION_TOKEN", creds.SessionToken)
