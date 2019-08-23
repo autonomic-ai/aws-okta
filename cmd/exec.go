@@ -126,11 +126,9 @@ func execRun(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if assumeRole != "" {
+	if _, ok := profiles[profile]; ok {
 		profiles[profile]["role_arn"] = assumeRole
-	}
-
-	if _, ok := profiles[profile]; !ok {
+	} else {
 		return fmt.Errorf("Profile '%s' not found in your aws config. Use list command to see configured profiles.", profile)
 	}
 
