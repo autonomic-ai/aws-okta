@@ -21,14 +21,15 @@ import (
 var (
 	sessionTTL    time.Duration
 	assumeRoleTTL time.Duration
+	assumeRole    string
 )
 
 func mustListProfiles() lib.Profiles {
-  profiles, err := listProfiles()
-  if err != nil {
-    log.Panicf("Failed to list profiles: %v", err)
-  }
-  return profiles
+	profiles, err := listProfiles()
+	if err != nil {
+		log.Panicf("Failed to list profiles: %v", err)
+	}
+	return profiles
 }
 
 // execCmd represents the exec command
@@ -44,6 +45,7 @@ func init() {
 	RootCmd.AddCommand(execCmd)
 	execCmd.Flags().DurationVarP(&sessionTTL, "session-ttl", "t", time.Hour, "Expiration time for okta role session")
 	execCmd.Flags().DurationVarP(&assumeRoleTTL, "assume-role-ttl", "a", time.Hour, "Expiration time for assumed role")
+	execCmd.Flags().StringVarP(&assumeRole, "assume-role", "r", "", "Assume a specified role using the role ARN")
 }
 
 func loadDurationFlagFromEnv(cmd *cobra.Command, flagName string, envVar string, val *time.Duration) error {
@@ -122,6 +124,10 @@ func execRun(cmd *cobra.Command, args []string) error {
 	profiles, err := config.Parse()
 	if err != nil {
 		return err
+	}
+
+	if assumeRole != "" {
+		profiles[profile]["role_arn"] = assumeRole
 	}
 
 	if _, ok := profiles[profile]; !ok {
