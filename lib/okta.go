@@ -184,12 +184,12 @@ func (o *OktaClient) AuthenticateUser() error {
 	return nil
 }
 
-func (o *OktaClient) AuthenticateProfileWithRegion(profileARN string, duration time.Duration, region string) (sts.Credentials, string, error) {
+func (o *OktaClient) AuthenticateProfileWithRegion(profileARN string, duration time.Duration, oktaAwsSAMLUrl string, region string) (sts.Credentials, string, error) {
 
 	// Attempt to reuse session cookie
 	var assertion SAMLAssertion
 
-	err := o.Get("GET", o.OktaAwsSAMLUrl, nil, &assertion, "saml")
+	err := o.GetAwsSAML(oktaAwsSAMLUrl, nil, &assertion, "saml")
 	if err != nil {
 		log.Debug("Failed to reuse session token, starting flow from start")
 
@@ -199,7 +199,7 @@ func (o *OktaClient) AuthenticateProfileWithRegion(profileARN string, duration t
 
 		// Step 3 : Get SAML Assertion and retrieve IAM Roles
 		log.Debug("Step: 3")
-		if err = o.Get("GET", o.OktaAwsSAMLUrl+"?onetimetoken="+o.UserAuth.SessionToken,
+		if err = o.GetAwsSAML(oktaAwsSAMLUrl+"?onetimetoken="+o.UserAuth.SessionToken,
 			nil, &assertion, "saml"); err != nil {
 			return sts.Credentials{}, "", err
 		}
@@ -247,6 +247,39 @@ func (o *OktaClient) AuthenticateProfileWithRegion(profileARN string, duration t
 	}
 
 	return *samlResp.Credentials, sessionCookie, nil
+}
+
+func (o *OktaClient) AuthenticateOIDC(oktaOIDCBaseUrl string, clientId string) (idToken string, err error) {
+	// https://${yourOktaDomain}/oauth2/v1/authorize?client_id={clientId}&response_type=id_token&scope=openid&prompt=none&redirect_uri=https%3A%2F%2Fyour-app.example.com&state=Af0ifjslDkj&nonce=n-0S6_WzA2Mj&sessionToken=0HsohZYpJgMSHwmL9TQy7RRzuY
+	oktaOIDCUrl := oktaOIDCBaseUrl + "response_type=id_token&scope=openid&prompt=none&client_id=" + clientId + "&redirect_uri=https%3A%2F%2F127.0.0.1:8888/callback"
+
+	// Attempt to reuse session cookie
+	idToken, err := o.GetOIDCToken(oktaOIDCUrl)
+	if err != nil {
+		log.Debug("Failed to reuse session token, starting flow from start")
+
+		if err := o.AuthenticateUser(); err != nil {
+			return "", err
+		}
+
+		// Step 3 : Get SAML Assertion and retrieve IAM Roles
+		log.Debug("Step: 3")
+		idToken, err := o.GetOIDCToken(oktaOIDCUrl)
+		//err = o.GetAwsSAML(o.OktaAwsSAMLUrl+"?onetimetoken="+o.UserAuth.SessionToken,
+		if err != nil {
+			return
+		}
+	}
+
+	var sessionCookie string
+	cookies := o.CookieJar.Cookies(o.BaseURL)
+	for _, cookie := range cookies {
+		if cookie.Name == "sid" {
+			sessionCookie = cookie.Value
+		}
+	}
+
+	return
 }
 
 //## TODO: update signature to pass in saml url
@@ -575,6 +608,104 @@ func (o *OktaClient) Get(method string, path string, data []byte, recv interface
 				return fmt.Errorf("Okta user %s does not have the AWS app added to their account.  Please contact your Okta admin to make sure things are configured properly.", o.Username)
 			}
 		}
+	}
+
+	return
+}
+
+func (o *OktaClient) request(method string, path string, data []byte, format string) (res *http.Response, err error) {
+	var res *http.Response
+	var body []byte
+	var header http.Header
+	var client http.Client
+
+	url, err := url.Parse(fmt.Sprintf(
+		"%s/%s", o.BaseURL, path,
+	))
+	if err != nil {
+		return
+	}
+
+	if format == "json" {
+		header = http.Header{
+			"Accept":        []string{"application/json"},
+			"Content-Type":  []string{"application/json"},
+			"Cache-Control": []string{"no-cache"},
+		}
+	} else {
+		// disable gzip encoding; it was causing spurious EOFs
+		// for some users; see #148
+		header = http.Header{
+			"Accept-Encoding": []string{"identity"},
+		}
+	}
+
+	transCfg := &http.Transport{
+		Proxy:               http.ProxyFromEnvironment,
+		TLSHandshakeTimeout: Timeout,
+	}
+	client = http.Client{
+		Transport: transCfg,
+		Timeout:   Timeout,
+		Jar:       o.CookieJar,
+	}
+
+	req := &http.Request{
+		Method:        method,
+		URL:           url,
+		Proto:         "HTTP/1.1",
+		ProtoMajor:    1,
+		ProtoMinor:    1,
+		Header:        header,
+		Body:          ioutil.NopCloser(bytes.NewReader(data)),
+		ContentLength: int64(len(body)),
+	}
+
+	res, err = client.Do(req)
+	return
+}
+
+func (o *OktaClient) GetAwsSAML(path string, data []byte, recv interface{}, format string) (err error) {
+	res, err := o.request("GET", path, data, format)
+	if err != nil {
+		return
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusOK {
+		err = fmt.Errorf("%s %v: %s", method, res.Request.URL, res.Status)
+	} else if recv != nil {
+		switch format {
+		case "json":
+			err = json.NewDecoder(res.Body).Decode(recv)
+		default:
+			var rawData []byte
+			rawData, err = ioutil.ReadAll(res.Body)
+			if err != nil {
+				return
+			}
+			if err := ParseSAML(rawData, recv.(*SAMLAssertion)); err != nil {
+				return fmt.Errorf("Okta user %s does not have the AWS app added to their account.  Please contact your Okta admin to make sure things are configured properly.", o.Username)
+			}
+		}
+	}
+
+	return
+}
+
+func (o *OktaClient) GetOIDCToken(path string) (idToken string, err error) {
+	var idToken string
+	res, err := o.request("GET", path, "", "json")
+	if err != nil {
+		return
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusFound {
+		err = fmt.Errorf("%s %v: %s", method, res.Request.URL, res.Status)
+	} else {
+		// TODO
+		idToken = "TOOD"
 	}
 
 	return
