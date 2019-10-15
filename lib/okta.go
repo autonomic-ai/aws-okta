@@ -38,20 +38,17 @@ const (
 
 type OktaClient struct {
 	// Organization will be deprecated in the future
-	Organization    string
-	Username        string
-	Password        string
-	UserAuth        *OktaUserAuthn
-	DuoClient       *DuoClient
-	AccessKeyId     string
-	SecretAccessKey string
-	SessionToken    string
-	Expiration      time.Time
-	OktaAwsSAMLUrl  string
-	CookieJar       http.CookieJar
-	BaseURL         *url.URL
-	Domain          string
-	MFAConfig       MFAConfig
+	Organization string
+	Username     string
+	Password     string
+	UserAuth     *OktaUserAuthn
+	DuoClient    *DuoClient
+	SessionToken string
+	Expiration   time.Time
+	CookieJar    http.CookieJar
+	BaseURL      *url.URL
+	Domain       string
+	MFAConfig    MFAConfig
 }
 
 type MFAConfig struct {
@@ -75,7 +72,7 @@ type OktaCreds struct {
 
 func (c *OktaCreds) Validate(mfaConfig MFAConfig) error {
 	// OktaClient assumes we're doing some AWS SAML calls, but Validate doesn't
-	o, err := NewOktaClient(*c, "", "", mfaConfig)
+	o, err := NewOktaClient(*c, "", mfaConfig)
 	if err != nil {
 		return err
 	}
@@ -99,7 +96,7 @@ func GetOktaDomain(region string) (string, error) {
 	return "", fmt.Errorf("invalid region %s", region)
 }
 
-func NewOktaClient(creds OktaCreds, oktaAwsSAMLUrl string, sessionCookie string, mfaConfig MFAConfig) (*OktaClient, error) {
+func NewOktaClient(creds OktaCreds, sessionCookie string, mfaConfig MFAConfig) (*OktaClient, error) {
 	var domain string
 
 	// maintain compatibility for deprecated creds.Organization
@@ -132,18 +129,19 @@ func NewOktaClient(creds OktaCreds, oktaAwsSAMLUrl string, sessionCookie string,
 			},
 		})
 	}
+	log.Debug("Using Okta session: ", sessionCookie)
 	log.Debug("domain: " + domain)
 
 	return &OktaClient{
 		// Setting Organization for backwards compatibility
-		Organization:   creds.Organization,
-		Username:       creds.Username,
-		Password:       creds.Password,
-		OktaAwsSAMLUrl: oktaAwsSAMLUrl,
-		CookieJar:      jar,
-		BaseURL:        base,
-		Domain:         domain,
-		MFAConfig:      mfaConfig,
+		Organization: creds.Organization,
+		Username:     creds.Username,
+		Password:     creds.Password,
+		CookieJar:    jar,
+		BaseURL:      base,
+		Domain:       domain,
+		MFAConfig:    mfaConfig,
+		UserAuth:     &OktaUserAuthn{SessionToken: sessionCookie},
 	}, nil
 }
 
@@ -251,9 +249,9 @@ func (o *OktaClient) AuthenticateProfileWithRegion(profileARN string, duration t
 	return *samlResp.Credentials, sessionCookie, nil
 }
 
-
-func (o *OktaClient) AuthenticateProfile(profileARN string, duration time.Duration) (sts.Credentials, string, error) {
-    return o.AuthenticateProfileWithRegion(profileARN, duration, "")
+//## TODO: update signature to pass in saml url
+func (o *OktaClient) AuthenticateProfile(profileARN string, oktaAwsSAMLUrl string, duration time.Duration) (sts.Credentials, string, error) {
+	return o.AuthenticateProfileWithRegion(profileARN, oktaAwsSAMLUrl, duration, "")
 }
 
 func selectMFADeviceFromConfig(o *OktaClient) (*OktaUserAuthnFactor, error) {
@@ -615,12 +613,12 @@ func (p *OktaProvider) Retrieve() (sts.Credentials, string, error) {
 		sessionCookie = string(cookieItem.Data)
 	}
 
-	oktaClient, err := NewOktaClient(oktaCreds, p.OktaAwsSAMLUrl, sessionCookie, p.MFAConfig)
+	oktaClient, err := NewOktaClient(oktaCreds, sessionCookie, p.MFAConfig)
 	if err != nil {
 		return sts.Credentials{}, "", err
 	}
 
-	creds, newSessionCookie, err := oktaClient.AuthenticateProfileWithRegion(p.ProfileARN, p.SessionDuration, p.AwsRegion)
+	creds, newSessionCookie, err := oktaClient.AuthenticateProfileWithRegion(p.ProfileARN, p.OktaAwsSAMLUrl, p.SessionDuration, p.AwsRegion)
 	if err != nil {
 		return sts.Credentials{}, "", err
 	}
