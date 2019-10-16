@@ -1,5 +1,15 @@
 package cmd
 
+/*
+currently the only things we need from the profile is the MFA config. As a short
+term solution we can require the user pass the MFA config via a cli arg.
+
+If we also setup our own credential caching we can just create and OktaProvider
+or an Okta client directly and skip the multiple layers of indirection.
+
+TODO: figure out caching and what would be stored in the keyring.
+
+*/
 import (
 	"fmt"
 

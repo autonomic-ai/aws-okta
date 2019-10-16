@@ -91,11 +91,11 @@ func add(cmd *cobra.Command, args []string) error {
 			return err
 		}
 	}
-	
+
 	if oktaAccountName == "" {
-	    oktaAccountName = "okta-creds"
+		oktaAccountName = "okta-creds"
 	} else {
-	    oktaAccountName = "okta-creds-" + oktaAccountName
+		oktaAccountName = "okta-creds-" + oktaAccountName
 	}
 	log.Debugf("Keyring key: %s", oktaAccountName)
 
@@ -106,6 +106,7 @@ func add(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Println()
 
+	// TODO(switj): extend this to include MFA config.
 	creds := lib.OktaCreds{
 		Organization: organization,
 		Username:     username,
