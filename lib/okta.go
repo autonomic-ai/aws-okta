@@ -254,7 +254,7 @@ func (o *OktaClient) AuthenticateOIDC(oktaOIDCBaseUrl string, clientId string) (
 	oktaOIDCUrl := oktaOIDCBaseUrl + "response_type=id_token&scope=openid&prompt=none&client_id=" + clientId + "&redirect_uri=https%3A%2F%2F127.0.0.1:8888/callback"
 
 	// Attempt to reuse session cookie
-	idToken, err := o.GetOIDCToken(oktaOIDCUrl)
+	idToken, err = o.GetOIDCToken(oktaOIDCUrl)
 	if err != nil {
 		log.Debug("Failed to reuse session token, starting flow from start")
 
@@ -264,27 +264,27 @@ func (o *OktaClient) AuthenticateOIDC(oktaOIDCBaseUrl string, clientId string) (
 
 		// Step 3 : Get SAML Assertion and retrieve IAM Roles
 		log.Debug("Step: 3")
-		idToken, err := o.GetOIDCToken(oktaOIDCUrl)
+		idToken, err = o.GetOIDCToken(oktaOIDCUrl)
 		//err = o.GetAwsSAML(o.OktaAwsSAMLUrl+"?onetimetoken="+o.UserAuth.SessionToken,
 		if err != nil {
 			return
 		}
 	}
 
-	var sessionCookie string
-	cookies := o.CookieJar.Cookies(o.BaseURL)
-	for _, cookie := range cookies {
-		if cookie.Name == "sid" {
-			sessionCookie = cookie.Value
-		}
-	}
+	//	var sessionCookie string
+	//	cookies := o.CookieJar.Cookies(o.BaseURL)
+	//	for _, cookie := range cookies {
+	//		if cookie.Name == "sid" {
+	//			sessionCookie = cookie.Value
+	//		}
+	//	}
 
 	return
 }
 
 //## TODO: update signature to pass in saml url
-func (o *OktaClient) AuthenticateProfile(profileARN string, oktaAwsSAMLUrl string, duration time.Duration) (sts.Credentials, string, error) {
-	return o.AuthenticateProfileWithRegion(profileARN, oktaAwsSAMLUrl, duration, "")
+func (o *OktaClient) AuthenticateProfile(profileARN string, duration time.Duration, oktaAwsSAMLUrl string) (sts.Credentials, string, error) {
+	return o.AuthenticateProfileWithRegion(profileARN, duration, oktaAwsSAMLUrl, "")
 }
 
 func selectMFADeviceFromConfig(o *OktaClient) (*OktaUserAuthnFactor, error) {
@@ -614,7 +614,7 @@ func (o *OktaClient) Get(method string, path string, data []byte, recv interface
 }
 
 func (o *OktaClient) request(method string, path string, data []byte, format string) (res *http.Response, err error) {
-	var res *http.Response
+	//var res *http.Response
 	var body []byte
 	var header http.Header
 	var client http.Client
@@ -673,7 +673,7 @@ func (o *OktaClient) GetAwsSAML(path string, data []byte, recv interface{}, form
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
-		err = fmt.Errorf("%s %v: %s", method, res.Request.URL, res.Status)
+		err = fmt.Errorf("%s %v: %s", "GET", res.Request.URL, res.Status)
 	} else if recv != nil {
 		switch format {
 		case "json":
@@ -694,15 +694,14 @@ func (o *OktaClient) GetAwsSAML(path string, data []byte, recv interface{}, form
 }
 
 func (o *OktaClient) GetOIDCToken(path string) (idToken string, err error) {
-	var idToken string
-	res, err := o.request("GET", path, "", "json")
+	res, err := o.request("GET", path, []byte(""), "json")
 	if err != nil {
 		return
 	}
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusFound {
-		err = fmt.Errorf("%s %v: %s", method, res.Request.URL, res.Status)
+		err = fmt.Errorf("%s %v: %s", "GET", res.Request.URL, res.Status)
 	} else {
 		// TODO
 		idToken = "TOOD"
@@ -749,7 +748,7 @@ func (p *OktaProvider) Retrieve() (sts.Credentials, string, error) {
 		return sts.Credentials{}, "", err
 	}
 
-	creds, newSessionCookie, err := oktaClient.AuthenticateProfileWithRegion(p.ProfileARN, p.OktaAwsSAMLUrl, p.SessionDuration, p.AwsRegion)
+	creds, newSessionCookie, err := oktaClient.AuthenticateProfileWithRegion(p.ProfileARN, p.SessionDuration, p.OktaAwsSAMLUrl, p.AwsRegion)
 	if err != nil {
 		return sts.Credentials{}, "", err
 	}
