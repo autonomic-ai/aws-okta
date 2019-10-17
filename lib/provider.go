@@ -223,11 +223,7 @@ func (p *Provider) GetOIDCToken(clientId string) (idToken string, err error) {
 		OktaAccountName:      oktaAccountName,
 	}
 
-	idToken, oktaUsername, err := oktaProvider.RetrieveOIDC(clientId)
-	if err != nil {
-		return
-	}
-	p.defaultRoleSessionName = oktaUsername
+	idToken, err = oktaProvider.RetrieveOIDC(clientId)
 
 	return
 }

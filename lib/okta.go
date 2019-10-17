@@ -19,6 +19,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sts"
+	"github.com/dgrijalva/jwt-go"
 	"github.com/google/uuid"
 	"github.com/segmentio/aws-okta/lib/mfa"
 	"github.com/segmentio/aws-okta/lib/saml"
@@ -773,7 +774,37 @@ type OktaProvider struct {
 	AwsRegion            string
 }
 
-func (p *OktaProvider) RetrieveOIDC(clientId string) (idToken string, oktaUsername string, err error) {
+func (p *OktaProvider) validateIdToken(idToken string) bool {
+	log.Debug("validating token: ", idToken)
+	token, _ := jwt.ParseWithClaims(idToken, &jwt.StandardClaims{}, nil)
+
+	expiryUnix := token.Claims.(*jwt.StandardClaims).ExpiresAt
+	expiry := time.Unix(expiryUnix, 0).UTC()
+	now := time.Now().UTC()
+	expired := now.After(expiry)
+
+	if expired {
+
+		log.Debug("Token expired:")
+		log.Debug("  expiryUnix: ", expiryUnix)
+		log.Debug("  expiry: ", expiry.String())
+		log.Debug("  now: ", now.String())
+		log.Debug(token)
+	}
+	return !expired
+}
+
+func (p *OktaProvider) RetrieveOIDC(clientId string) (idToken string, err error) {
+	// Check for stored id token
+	var idTokenItem keyring.Item
+	idTokenItem, err = p.Keyring.Get(clientId)
+	if err == nil {
+		idToken = string(idTokenItem.Data)
+		if p.validateIdToken(idToken) {
+			return
+		}
+	}
+
 	log.Debugf("Using okta provider (%s)", p.OktaAccountName)
 	item, err := p.Keyring.Get(p.OktaAccountName)
 	if err != nil {
@@ -783,7 +814,8 @@ func (p *OktaProvider) RetrieveOIDC(clientId string) (idToken string, oktaUserna
 
 	var oktaCreds OktaCreds
 	if err = json.Unmarshal(item.Data, &oktaCreds); err != nil {
-		return "", "", errors.New("Failed to get okta credentials from your keyring.  Please make sure you have added okta credentials with `aws-okta add`")
+		err = errors.New("Failed to get okta credentials from your keyring.  Please make sure you have added okta credentials with `aws-okta add`")
+		return
 	}
 
 	// Check for stored session cookie
@@ -795,13 +827,26 @@ func (p *OktaProvider) RetrieveOIDC(clientId string) (idToken string, oktaUserna
 
 	oktaClient, err := NewOktaClient(oktaCreds, sessionCookie, p.MFAConfig)
 	if err != nil {
-		return "", "", err
+		return
 	}
 
 	idToken, newSessionCookie, err := oktaClient.AuthenticateOIDC(clientId)
 	if err != nil {
-		return "", "", err
+		return
 	}
+
+	if !p.validateIdToken(idToken) {
+		err = fmt.Errorf("Token retrieved but was invalid")
+		return
+	}
+
+	newIdTokenItem := keyring.Item{
+		Key:                         clientId,
+		Data:                        []byte(idToken),
+		Label:                       "okta OIDC Token",
+		KeychainNotTrustApplication: false,
+	}
+	p.Keyring.Set(newIdTokenItem)
 
 	newCookieItem := keyring.Item{
 		Key:                         p.OktaSessionCookieKey,
@@ -809,10 +854,9 @@ func (p *OktaProvider) RetrieveOIDC(clientId string) (idToken string, oktaUserna
 		Label:                       "okta session cookie",
 		KeychainNotTrustApplication: false,
 	}
-
 	p.Keyring.Set(newCookieItem)
 
-	return idToken, oktaCreds.Username, err
+	return
 }
 
 func (p *OktaProvider) Retrieve() (sts.Credentials, string, error) {
