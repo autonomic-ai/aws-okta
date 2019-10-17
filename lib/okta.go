@@ -249,35 +249,39 @@ func (o *OktaClient) AuthenticateProfileWithRegion(profileARN string, duration t
 	return *samlResp.Credentials, sessionCookie, nil
 }
 
-func (o *OktaClient) AuthenticateOIDC(oktaOIDCBaseUrl string, clientId string) (idToken string, err error) {
+func (o *OktaClient) AuthenticateOIDC(clientId string) (idToken string, sessionCookie string, err error) {
 	// https://${yourOktaDomain}/oauth2/v1/authorize?client_id={clientId}&response_type=id_token&scope=openid&prompt=none&redirect_uri=https%3A%2F%2Fyour-app.example.com&state=Af0ifjslDkj&nonce=n-0S6_WzA2Mj&sessionToken=0HsohZYpJgMSHwmL9TQy7RRzuY
-	oktaOIDCUrl := oktaOIDCBaseUrl + "response_type=id_token&scope=openid&prompt=none&client_id=" + clientId + "&redirect_uri=https%3A%2F%2F127.0.0.1:8888/callback"
+	oktaOIDCUrl := "oauth2/v1/authorize?"
+	oktaOIDCUrl += "client_id=" + clientId
+	oktaOIDCUrl += "&response_type=id_token"
+	oktaOIDCUrl += "&scope=openid"
+	oktaOIDCUrl += "&prompt=none"
+	oktaOIDCUrl += "&redirect_uri=https%3A%2F%2F127.0.0.1:7789/callback"
+	oktaOIDCUrl += "&nonce=n-0S6_WzA2M&state=Af0ifjslDkj"
 
 	// Attempt to reuse session cookie
 	idToken, err = o.GetOIDCToken(oktaOIDCUrl)
 	if err != nil {
 		log.Debug("Failed to reuse session token, starting flow from start")
 
-		if err := o.AuthenticateUser(); err != nil {
-			return "", err
+		if err = o.AuthenticateUser(); err != nil {
+			return
 		}
 
 		// Step 3 : Get SAML Assertion and retrieve IAM Roles
 		log.Debug("Step: 3")
-		idToken, err = o.GetOIDCToken(oktaOIDCUrl)
-		//err = o.GetAwsSAML(o.OktaAwsSAMLUrl+"?onetimetoken="+o.UserAuth.SessionToken,
+		idToken, err = o.GetOIDCToken(oktaOIDCUrl + "&sessionToken=" + o.UserAuth.SessionToken)
 		if err != nil {
 			return
 		}
 	}
 
-	//	var sessionCookie string
-	//	cookies := o.CookieJar.Cookies(o.BaseURL)
-	//	for _, cookie := range cookies {
-	//		if cookie.Name == "sid" {
-	//			sessionCookie = cookie.Value
-	//		}
-	//	}
+	cookies := o.CookieJar.Cookies(o.BaseURL)
+	for _, cookie := range cookies {
+		if cookie.Name == "sid" {
+			sessionCookie = cookie.Value
+		}
+	}
 
 	return
 }
@@ -613,7 +617,7 @@ func (o *OktaClient) Get(method string, path string, data []byte, recv interface
 	return
 }
 
-func (o *OktaClient) request(method string, path string, data []byte, format string) (res *http.Response, err error) {
+func (o *OktaClient) request(method string, path string, data []byte, format string, followRedirects bool) (res *http.Response, err error) {
 	//var res *http.Response
 	var body []byte
 	var header http.Header
@@ -644,10 +648,18 @@ func (o *OktaClient) request(method string, path string, data []byte, format str
 		Proxy:               http.ProxyFromEnvironment,
 		TLSHandshakeTimeout: Timeout,
 	}
+
+	var checkRedirectFunc func(req *http.Request, via []*http.Request) error
+	if !followRedirects {
+		checkRedirectFunc = func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		}
+	}
 	client = http.Client{
-		Transport: transCfg,
-		Timeout:   Timeout,
-		Jar:       o.CookieJar,
+		Transport:     transCfg,
+		Timeout:       Timeout,
+		Jar:           o.CookieJar,
+		CheckRedirect: checkRedirectFunc,
 	}
 
 	req := &http.Request{
@@ -661,12 +673,14 @@ func (o *OktaClient) request(method string, path string, data []byte, format str
 		ContentLength: int64(len(body)),
 	}
 
+	log.Debug(method, " ", url)
+
 	res, err = client.Do(req)
 	return
 }
 
 func (o *OktaClient) GetAwsSAML(path string, data []byte, recv interface{}, format string) (err error) {
-	res, err := o.request("GET", path, data, format)
+	res, err := o.request("GET", path, data, format, true)
 	if err != nil {
 		return
 	}
@@ -694,7 +708,7 @@ func (o *OktaClient) GetAwsSAML(path string, data []byte, recv interface{}, form
 }
 
 func (o *OktaClient) GetOIDCToken(path string) (idToken string, err error) {
-	res, err := o.request("GET", path, []byte(""), "json")
+	res, err := o.request("GET", path, []byte(""), "json", false)
 	if err != nil {
 		return
 	}
@@ -703,8 +717,15 @@ func (o *OktaClient) GetOIDCToken(path string) (idToken string, err error) {
 	if res.StatusCode != http.StatusFound {
 		err = fmt.Errorf("%s %v: %s", "GET", res.Request.URL, res.Status)
 	} else {
-		// TODO
-		idToken = "TOOD"
+		// TODO get expiry too
+		idToken = res.Header["Location"][0]
+		expires := res.Header["Expires"][0]
+		log.Debug(expires)
+		log.Debug(idToken)
+
+		//if expiry == "0" {
+		err = fmt.Errorf("123")
+		//}
 	}
 
 	return
@@ -721,6 +742,48 @@ type OktaProvider struct {
 	OktaAccountName      string
 	MFAConfig            MFAConfig
 	AwsRegion            string
+}
+
+func (p *OktaProvider) RetrieveOIDC(clientId string) (idToken string, oktaUsername string, err error) {
+	log.Debugf("Using okta provider (%s)", p.OktaAccountName)
+	item, err := p.Keyring.Get(p.OktaAccountName)
+	if err != nil {
+		log.Debugf("Couldnt get okta creds from keyring: %s", err)
+		return
+	}
+
+	var oktaCreds OktaCreds
+	if err = json.Unmarshal(item.Data, &oktaCreds); err != nil {
+		return "", "", errors.New("Failed to get okta credentials from your keyring.  Please make sure you have added okta credentials with `aws-okta add`")
+	}
+
+	// Check for stored session cookie
+	var sessionCookie string
+	cookieItem, err := p.Keyring.Get(p.OktaSessionCookieKey)
+	if err == nil {
+		sessionCookie = string(cookieItem.Data)
+	}
+
+	oktaClient, err := NewOktaClient(oktaCreds, sessionCookie, p.MFAConfig)
+	if err != nil {
+		return "", "", err
+	}
+
+	idToken, newSessionCookie, err := oktaClient.AuthenticateOIDC(clientId)
+	if err != nil {
+		return "", "", err
+	}
+
+	newCookieItem := keyring.Item{
+		Key:                         p.OktaSessionCookieKey,
+		Data:                        []byte(newSessionCookie),
+		Label:                       "okta session cookie",
+		KeychainNotTrustApplication: false,
+	}
+
+	p.Keyring.Set(newCookieItem)
+
+	return idToken, oktaCreds.Username, err
 }
 
 func (p *OktaProvider) Retrieve() (sts.Credentials, string, error) {
