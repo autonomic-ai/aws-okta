@@ -262,12 +262,21 @@ func (o *OktaClient) AuthenticateOIDC(clientId string) (idToken string, sessionC
 	if err != nil {
 		return
 	}
+
+	/*
+		TODO:
+			- use url.Values instead of a string so we can get proper encoding for the
+				param values
+			- confirm that the claims on the token are correct.
+					-- some config changes in Okta may be required...
+
+	*/
 	oktaOIDCUrl := "oauth2/v1/authorize?"
 	oktaOIDCUrl += "client_id=" + clientId
 	oktaOIDCUrl += "&response_type=id_token"
-	oktaOIDCUrl += "&scope=openid"
+	oktaOIDCUrl += "&scope=openid+profile+groups+email"
 	oktaOIDCUrl += "&prompt=none"
-	oktaOIDCUrl += "&redirect_uri=https%3A%2F%2F127.0.0.1:7789/callback"
+	oktaOIDCUrl += "&redirect_uri=https://127.0.0.1:7789/callback"
 	oktaOIDCUrl += "&nonce=" + nonce.String()
 	oktaOIDCUrl += "&state=" + state.String()
 

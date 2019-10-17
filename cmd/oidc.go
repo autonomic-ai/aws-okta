@@ -11,7 +11,8 @@ TODO: figure out caching and what would be stored in the keyring.
 
 */
 import (
-	"fmt"
+	"encoding/json"
+	"os"
 
 	"github.com/99designs/keyring"
 	"github.com/segmentio/aws-okta/lib"
@@ -81,6 +82,32 @@ func oidcRun(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Maybe one day a token :fingerscrossed: : %s", idToken)
+	/*
+	   {"kind":"ExecCredential","apiVersion":"client.authentication.k8s.io/v1alpha1","spec":{},"status":{"token":"alicloud.v1.tokenaHR0cHM6Ly9zdHMuYWxpeXVuY3MuY29tLz9BY2Nlc3NLZXlJZD1MVEFJbGZnOFY0bVpNa0YwJkFjdGlvbj1HZXRDYWxsZXJJZGVudGl0eSZGb3JtYXQ9SlNPTiZSZWdpb25JZD1jbi1zaGFuZ2hhaSZTaWduYXR1cmU9ZTBDSkY3QmdBJTJGMDJJd1hxeUNOUXZnbnM3UFklM0QmU2lnbmF0dXJlTWV0aG9kPUhNQUMtU0hBMSZTaWduYXR1cmVOb25jZT03Zjg3NTg3MzhjZDc0ZGIzYjBkNDY0MDcyOTQ2ODBjZiZTaWduYXR1cmVUeXBlPSZTaWduYXR1cmVWZXJzaW9uPTEuMCZUaW1lc3RhbXA9MjAxOS0xMC0xN1QyMCUzQTMyJTNBMjhaJlZlcnNpb249MjAxNS0wNC0wMQ=="}}
+	*/
+	k8sToken := KubernetesToken{
+		Kind:       "ExecCredential",
+		ApiVersion: "client.authentication.k8s.io/v1alpha1",
+		Spec:       map[string]string{},
+		Status:     OIDCToken{Token: idToken},
+	}
+	output, err := json.Marshal(k8sToken)
+	if err != nil {
+		return err
+	}
+	os.Stdout.Write(output)
+	//fmt.Println(string(output))
+	//"{"kind":"ExecCredential","apiVersion":"client.authentication.k8s.io/v1alpha1","spec":{},"status":{"token":""}} %s", idToken)
 	return nil
+}
+
+type KubernetesToken struct {
+	Kind       string            `json:"kind"`
+	ApiVersion string            `json:"apiVersion"`
+	Spec       map[string]string `json:"spec"`
+	Status     OIDCToken         `json:"status"`
+}
+
+type OIDCToken struct {
+	Token string `json:"token"`
 }
