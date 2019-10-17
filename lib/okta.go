@@ -19,6 +19,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sts"
+	"github.com/google/uuid"
 	"github.com/segmentio/aws-okta/lib/mfa"
 	"github.com/segmentio/aws-okta/lib/saml"
 	log "github.com/sirupsen/logrus"
@@ -250,17 +251,27 @@ func (o *OktaClient) AuthenticateProfileWithRegion(profileARN string, duration t
 }
 
 func (o *OktaClient) AuthenticateOIDC(clientId string) (idToken string, sessionCookie string, err error) {
-	// https://${yourOktaDomain}/oauth2/v1/authorize?client_id={clientId}&response_type=id_token&scope=openid&prompt=none&redirect_uri=https%3A%2F%2Fyour-app.example.com&state=Af0ifjslDkj&nonce=n-0S6_WzA2Mj&sessionToken=0HsohZYpJgMSHwmL9TQy7RRzuY
+	var state uuid.UUID
+	var nonce uuid.UUID
+	state, err = uuid.NewUUID()
+	if err != nil {
+		return
+	}
+	nonce, err = uuid.NewUUID()
+	if err != nil {
+		return
+	}
 	oktaOIDCUrl := "oauth2/v1/authorize?"
 	oktaOIDCUrl += "client_id=" + clientId
 	oktaOIDCUrl += "&response_type=id_token"
 	oktaOIDCUrl += "&scope=openid"
 	oktaOIDCUrl += "&prompt=none"
 	oktaOIDCUrl += "&redirect_uri=https%3A%2F%2F127.0.0.1:7789/callback"
-	oktaOIDCUrl += "&nonce=n-0S6_WzA2M&state=Af0ifjslDkj"
+	oktaOIDCUrl += "&nonce=" + nonce.String()
+	oktaOIDCUrl += "&state=" + state.String()
 
 	// Attempt to reuse session cookie
-	idToken, err = o.GetOIDCToken(oktaOIDCUrl)
+	idToken, err = o.GetOIDCToken(oktaOIDCUrl+"&sessionToken="+o.UserAuth.SessionToken, state.String())
 	if err != nil {
 		log.Debug("Failed to reuse session token, starting flow from start")
 
@@ -270,19 +281,13 @@ func (o *OktaClient) AuthenticateOIDC(clientId string) (idToken string, sessionC
 
 		// Step 3 : Get SAML Assertion and retrieve IAM Roles
 		log.Debug("Step: 3")
-		idToken, err = o.GetOIDCToken(oktaOIDCUrl + "&sessionToken=" + o.UserAuth.SessionToken)
+		idToken, err = o.GetOIDCToken(oktaOIDCUrl+"&sessionToken="+o.UserAuth.SessionToken, state.String())
 		if err != nil {
 			return
 		}
 	}
 
-	cookies := o.CookieJar.Cookies(o.BaseURL)
-	for _, cookie := range cookies {
-		if cookie.Name == "sid" {
-			sessionCookie = cookie.Value
-		}
-	}
-
+	sessionCookie = o.UserAuth.SessionToken
 	return
 }
 
@@ -707,7 +712,13 @@ func (o *OktaClient) GetAwsSAML(path string, data []byte, recv interface{}, form
 	return
 }
 
-func (o *OktaClient) GetOIDCToken(path string) (idToken string, err error) {
+/*
+- fix session so we dont need to re-auth.
+*/
+func (o *OktaClient) GetOIDCToken(path string, reqState string) (idToken string, err error) {
+	var queryValues url.Values
+	var redirectUrl *url.URL
+
 	res, err := o.request("GET", path, []byte(""), "json", false)
 	if err != nil {
 		return
@@ -717,15 +728,33 @@ func (o *OktaClient) GetOIDCToken(path string) (idToken string, err error) {
 	if res.StatusCode != http.StatusFound {
 		err = fmt.Errorf("%s %v: %s", "GET", res.Request.URL, res.Status)
 	} else {
-		// TODO get expiry too
-		idToken = res.Header["Location"][0]
-		expires := res.Header["Expires"][0]
-		log.Debug(expires)
-		log.Debug(idToken)
+		rawUrl, ok := res.Header["Location"]
+		if !ok {
+			err = fmt.Errorf("Redirect Location missing.")
+			return
+		}
+		if len(rawUrl) != 1 {
+			err = fmt.Errorf("Expecting one location value got: ", rawUrl)
+			return
+		}
+		redirectUrl, err = url.Parse(rawUrl[0])
+		if err != nil {
+			return
+		}
+		queryValues, err = url.ParseQuery(redirectUrl.Fragment)
+		if err != nil {
+			return
+		}
 
-		//if expiry == "0" {
-		err = fmt.Errorf("123")
-		//}
+		if resState := queryValues.Get("state"); resState != reqState {
+			err = fmt.Errorf("Request state does not match response state")
+			return
+		}
+
+		if idToken = queryValues.Get("id_token"); idToken == "" {
+			log.Debug("Unable to get idToken: ", rawUrl[0])
+			err = fmt.Errorf(queryValues.Get("error_description"))
+		}
 	}
 
 	return
