@@ -16,6 +16,7 @@ require (
 	github.com/kardianos/govendor v1.0.9 // indirect
 	github.com/keybase/go-keychain v0.0.0-20190604185112-cc436cc9fe98 // indirect
 	github.com/konsorten/go-windows-terminal-sequences v1.0.2 // indirect
+	github.com/lox/go-touchid v0.0.0-20170712105233-619cc8e578d0
 	github.com/marshallbrekka/go-u2fhost v0.0.0-20170128051651-72b0e7a3f583
 	github.com/marshallbrekka/go.hid v0.0.0-20161227002717-2c1c4616a9e7 // indirect
 	github.com/mitchellh/go-homedir v1.1.0

@@ -210,17 +210,17 @@ func (p *Provider) getOktaAccountName() string {
 }
 
 func (p *Provider) GetOIDCToken(clientId string) (idToken string, err error) {
-	oktaSessionCookieKey := p.getOktaSessionCookieKey()
+	//oktaSessionCookieKey := p.getOktaSessionCookieKey()
 	oktaAccountName := p.getOktaAccountName()
 
 	oktaProvider := OktaProvider{
-		MFAConfig:            p.ProviderOptions.MFAConfig,
-		Keyring:              p.keyring,
-		ProfileARN:           "not-used",
-		SessionDuration:      p.SessionDuration,
-		OktaAwsSAMLUrl:       "not-used",
-		OktaSessionCookieKey: oktaSessionCookieKey,
-		OktaAccountName:      oktaAccountName,
+		MFAConfig:       p.ProviderOptions.MFAConfig,
+		Keyring:         p.keyring,
+		ProfileARN:      "not-used",
+		SessionDuration: p.SessionDuration,
+		OktaAwsSAMLUrl:  "not-used",
+		//OktaSessionCookieKey: oktaSessionCookieKey,
+		OktaAccountName: oktaAccountName,
 	}
 
 	idToken, err = oktaProvider.RetrieveOIDC(clientId)
@@ -236,7 +236,7 @@ func (p *Provider) getSamlSessionCreds() (sts.Credentials, error) {
 	if err != nil {
 		return sts.Credentials{}, err
 	}
-	oktaSessionCookieKey := p.getOktaSessionCookieKey()
+	//oktaSessionCookieKey := p.getOktaSessionCookieKey()
 	oktaAccountName := p.getOktaAccountName()
 
 	// if the assumable role is passed it have it override what is in the profile
@@ -251,13 +251,13 @@ func (p *Provider) getSamlSessionCreds() (sts.Credentials, error) {
 	}
 
 	provider := OktaProvider{
-		MFAConfig:            p.ProviderOptions.MFAConfig,
-		Keyring:              p.keyring,
-		ProfileARN:           profileARN,
-		SessionDuration:      p.SessionDuration,
-		OktaAwsSAMLUrl:       oktaAwsSAMLUrl,
-		OktaSessionCookieKey: oktaSessionCookieKey,
-		OktaAccountName:      oktaAccountName,
+		MFAConfig:       p.ProviderOptions.MFAConfig,
+		Keyring:         p.keyring,
+		ProfileARN:      profileARN,
+		SessionDuration: p.SessionDuration,
+		OktaAwsSAMLUrl:  oktaAwsSAMLUrl,
+		//OktaSessionCookieKey: oktaSessionCookieKey,
+		OktaAccountName: oktaAccountName,
 	}
 
 	if region := p.profiles[source]["region"]; region != "" {
@@ -279,19 +279,19 @@ func (p *Provider) GetSAMLLoginURL() (*url.URL, error) {
 	if err != nil {
 		return &url.URL{}, err
 	}
-	oktaSessionCookieKey := p.getOktaSessionCookieKey()
+	//oktaSessionCookieKey := p.getOktaSessionCookieKey()
 	oktaAccountName := p.getOktaAccountName()
 
 	profileARN := p.profiles[source]["role_arn"]
 
 	provider := OktaProvider{
-		MFAConfig:            p.ProviderOptions.MFAConfig,
-		Keyring:              p.keyring,
-		ProfileARN:           profileARN,
-		SessionDuration:      p.SessionDuration,
-		OktaAwsSAMLUrl:       oktaAwsSAMLUrl,
-		OktaSessionCookieKey: oktaSessionCookieKey,
-		OktaAccountName:      oktaAccountName,
+		MFAConfig:       p.ProviderOptions.MFAConfig,
+		Keyring:         p.keyring,
+		ProfileARN:      profileARN,
+		SessionDuration: p.SessionDuration,
+		OktaAwsSAMLUrl:  oktaAwsSAMLUrl,
+		//OktaSessionCookieKey: oktaSessionCookieKey,
+		OktaAccountName: oktaAccountName,
 	}
 
 	if region := p.profiles[source]["region"]; region != "" {

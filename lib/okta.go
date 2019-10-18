@@ -188,11 +188,9 @@ func (o *OktaClient) saveSessionCookie() (err error) {
 	return
 }
 
-func (o *OktaClient) AuthenticateUser() (err error) {
-	var oktaUserAuthn OktaUserAuthn
-	var sessionsResponse *http.Response
+func (o *OktaClient) validateSession() (sessionValid bool, err error) {
 	var mySessionResponse *http.Response
-	var payload []byte
+	sessionValid = false
 
 	// Step 0 : Check if we have valid session
 	log.Debug("Step: 0")
@@ -200,11 +198,16 @@ func (o *OktaClient) AuthenticateUser() (err error) {
 	if err != nil {
 		return
 	}
-
 	defer mySessionResponse.Body.Close()
-	if mySessionResponse.StatusCode == http.StatusOK {
-		return
-	}
+
+	sessionValid = mySessionResponse.StatusCode == http.StatusOK
+
+	return
+}
+
+func (o *OktaClient) AuthenticateUser() (err error) {
+	var oktaUserAuthn OktaUserAuthn
+	var payload []byte
 
 	// Step 1 : Basic authentication
 	user := OktaUser{
@@ -238,27 +241,27 @@ func (o *OktaClient) AuthenticateUser() (err error) {
 	if o.UserAuth.SessionToken == "" {
 		return fmt.Errorf("authentication failed for %s", o.Username)
 	}
-	payload, err = json.Marshal(&SessionRequest{SessionToken: o.UserAuth.SessionToken})
-	if err != nil {
-		return
-	}
+	//	payload, err = json.Marshal(&SessionRequest{SessionToken: o.UserAuth.SessionToken})
+	//	if err != nil {
+	//		return
+	//	}
 
 	return
 
-	sessionsResponse, err = o.request("POST", "api/v1/sessions", url.Values{}, payload, "json", false)
-	if err != nil {
-		log.Debug(err)
-		return
-	}
+	//	sessionsResponse, err = o.request("POST", "api/v1/sessions", url.Values{}, payload, "json", false)
+	//	if err != nil {
+	//		log.Debug(err)
+	//		return
+	//	}
 
-	defer sessionsResponse.Body.Close()
-	if sessionsResponse.StatusCode != http.StatusOK {
-		err = fmt.Errorf("authentication failed for %s", o.Username)
-		log.Debug(err)
-		return
-	}
+	//	defer sessionsResponse.Body.Close()
+	//	if sessionsResponse.StatusCode != http.StatusOK {
+	//		err = fmt.Errorf("authentication failed for %s", o.Username)
+	//		log.Debug(err)
+	//		return
+	//	}
 
-	return
+	///	return
 }
 
 type SessionRequest struct {
@@ -269,8 +272,9 @@ func (o *OktaClient) AuthenticateProfileWithRegion(profileARN string, duration t
 
 	// Attempt to reuse session cookie
 	var assertion SAMLAssertion
+	queryParams := url.Values{}
 
-	err := o.GetAwsSAML(oktaAwsSAMLUrl, nil, &assertion, "saml")
+	err := o.GetAwsSAML(oktaAwsSAMLUrl, queryParams, nil, &assertion, "saml")
 	if err != nil {
 		log.Debug("Failed to reuse session token, starting flow from start")
 
@@ -280,8 +284,8 @@ func (o *OktaClient) AuthenticateProfileWithRegion(profileARN string, duration t
 
 		// Step 3 : Get SAML Assertion and retrieve IAM Roles
 		log.Debug("Step: 3")
-		if err = o.GetAwsSAML(oktaAwsSAMLUrl+"?onetimetoken="+o.UserAuth.SessionToken,
-			nil, &assertion, "saml"); err != nil {
+		queryParams.Set("onetimetoken", o.UserAuth.SessionToken)
+		if err = o.GetAwsSAML(oktaAwsSAMLUrl, queryParams, nil, &assertion, "saml"); err != nil {
 			return sts.Credentials{}, err
 		}
 	}
@@ -327,6 +331,8 @@ func (o *OktaClient) AuthenticateProfileWithRegion(profileARN string, duration t
 func (o *OktaClient) AuthenticateOIDC(clientId string, authOpts map[string]string) (idToken string, err error) {
 	var state uuid.UUID
 	var nonce uuid.UUID
+	var sessionValid bool
+
 	state, err = uuid.NewUUID()
 	if err != nil {
 		return
@@ -346,17 +352,20 @@ func (o *OktaClient) AuthenticateOIDC(clientId string, authOpts map[string]strin
 	queryParams.Set("nonce", nonce.String())
 	queryParams.Set("state", state.String())
 
-	if err = o.AuthenticateUser(); err != nil {
+	sessionValid, err = o.validateSession()
+	if err != nil {
 		return
+	}
+	if !sessionValid {
+		if err = o.AuthenticateUser(); err != nil {
+			return
+		}
 	}
 
 	// Step 3 : Get SAML Assertion and retrieve IAM Roles
 	log.Debug("Step: 3")
 	queryParams.Set("sessionToken", o.UserAuth.SessionToken)
 	idToken, err = o.GetOIDCToken(path, queryParams, state.String())
-	if err == nil {
-		o.saveSessionCookie()
-	}
 
 	return
 }
@@ -748,14 +757,14 @@ func (o *OktaClient) request(method string, path string, queryParams url.Values,
 		Body:          ioutil.NopCloser(bytes.NewReader(data)),
 		ContentLength: int64(len(body)),
 	}
+	log.Debug(method, " ", requestUrl.String())
 
 	res, err = client.Do(req)
 	return
 }
 
-func (o *OktaClient) GetAwsSAML(path string, data []byte, recv interface{}, format string) (err error) {
-	// Upstream provides queryParams in the path and so we pass an empty Values to request
-	res, err := o.request("GET", path, url.Values{}, data, format, true)
+func (o *OktaClient) GetAwsSAML(path string, queryParams url.Values, data []byte, recv interface{}, format string) (err error) {
+	res, err := o.request("GET", path, queryParams, data, format, true)
 	if err != nil {
 		return
 	}
@@ -826,7 +835,7 @@ func (o *OktaClient) GetOIDCToken(path string, queryParams url.Values, reqState 
 			err = fmt.Errorf(queryValues.Get("error_description"))
 		}
 	}
-
+	o.saveSessionCookie()
 	return
 }
 
@@ -835,16 +844,12 @@ type OktaProvider struct {
 	ProfileARN      string
 	SessionDuration time.Duration
 	OktaAwsSAMLUrl  string
-	// OktaSessionCookieKey represents the name of the session cookie
-	// to be stored in the keyring.
-	OktaSessionCookieKey string
-	OktaAccountName      string
-	MFAConfig            MFAConfig
-	AwsRegion            string
+	OktaAccountName string
+	MFAConfig       MFAConfig
+	AwsRegion       string
 }
 
 func (p *OktaProvider) validateIdToken(idToken string) bool {
-	log.Debug("validating token: ", idToken)
 	token, _ := jwt.ParseWithClaims(idToken, &jwt.StandardClaims{}, nil)
 
 	expiryUnix := token.Claims.(*jwt.StandardClaims).ExpiresAt
@@ -858,7 +863,6 @@ func (p *OktaProvider) validateIdToken(idToken string) bool {
 		log.Debug("  expiryUnix: ", expiryUnix)
 		log.Debug("  expiry: ", expiry.String())
 		log.Debug("  now: ", now.String())
-		log.Debug(token)
 	}
 	return !expired
 }

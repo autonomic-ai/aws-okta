@@ -50,6 +50,8 @@ github.com/kr/pretty v0.1.0/go.mod h1:dAy3ld7l9f0ibDNOQOHHMYYIIbhfbHSm3C4ZsoJORN
 github.com/kr/pty v1.1.1/go.mod h1:pFQYn66WHrOpPYNljwOMqo10TkYh1fy3cYio2l3bCsQ=
 github.com/kr/text v0.1.0 h1:45sCR5RtlFHMR4UwH9sdQ5TC8v0qDQCHnXt+kaKSTVE=
 github.com/kr/text v0.1.0/go.mod h1:4Jbv+DJW3UT/LiOwJeYQe1efqtUx/iVham/4vfdArNI=
+github.com/lox/go-touchid v0.0.0-20170712105233-619cc8e578d0 h1:m81erW+1MD5vl3lKQ/+TYPHJ6Y9/C1COqxXPE51FkDk=
+github.com/lox/go-touchid v0.0.0-20170712105233-619cc8e578d0/go.mod h1:EHbIQzfC3kdWFI81pLOFjssnolF+ALfmVf8PUdWBxo4=
 github.com/marshallbrekka/go-u2fhost v0.0.0-20170128051651-72b0e7a3f583 h1:PmKzeWNGbrlpxS1PoMfvHQaFZjY6tBWzl2Dni9IjBPE=
 github.com/marshallbrekka/go-u2fhost v0.0.0-20170128051651-72b0e7a3f583/go.mod h1:U9kRL9P37LGrkikKWuekWsReXRKe2fkZdRSXpI7pP3A=
 github.com/marshallbrekka/go.hid v0.0.0-20161227002717-2c1c4616a9e7 h1:OWtSIWxw/A5amtd2wDFMtFILVoCuHC+k4V5Y/0aM4/Y=

@@ -56,6 +56,8 @@ github.com/jmespath/go-jmespath
 github.com/keybase/go-keychain
 # github.com/konsorten/go-windows-terminal-sequences v1.0.2
 github.com/konsorten/go-windows-terminal-sequences
+# github.com/lox/go-touchid v0.0.0-20170712105233-619cc8e578d0
+github.com/lox/go-touchid
 # github.com/marshallbrekka/go-u2fhost v0.0.0-20170128051651-72b0e7a3f583
 github.com/marshallbrekka/go-u2fhost
 github.com/marshallbrekka/go-u2fhost/bytes

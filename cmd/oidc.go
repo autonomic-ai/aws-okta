@@ -6,12 +6,10 @@ term solution we can require the user pass the MFA config via a cli arg.
 
 If we also setup our own credential caching we can just create and OktaProvider
 or an Okta client directly and skip the multiple layers of indirection.
-
-TODO: figure out caching and what would be stored in the keyring.
-
 */
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 
 	"github.com/99designs/keyring"
@@ -34,12 +32,14 @@ var oidcCmd = &cobra.Command{
 func init() {
 	RootCmd.AddCommand(oidcCmd)
 	oidcCmd.Flags().StringVarP(&clientId, "client-id", "c", "", "Client Id to use")
+	oidcCmd.MarkFlagRequired("client-id")
 }
 
 func oidcRun(cmd *cobra.Command, args []string) error {
-	//	if len(args) < 1 {
-	//		return ErrTooFewArguments
-	//	}
+	if clientId == "" {
+		fmt.Fprintln(os.Stderr, "Error: Flag --client-id is required")
+		return ErrTooFewArguments
+	}
 
 	config, err := lib.NewConfigFromEnv()
 	if err != nil {
@@ -65,7 +65,6 @@ func oidcRun(cmd *cobra.Command, args []string) error {
 	if backend != "" {
 		allowedBackends = append(allowedBackends, keyring.BackendType(backend))
 	}
-
 	kr, err := lib.OpenKeyring(allowedBackends)
 	if err != nil {
 		return err
