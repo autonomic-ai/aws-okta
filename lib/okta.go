@@ -51,7 +51,7 @@ type OktaClient struct {
 	BaseURL      *url.URL
 	Domain       string
 	MFAConfig    MFAConfig
-	Keyring      keyring.Keyring
+	Keyring      *keyring.Keyring
 }
 
 type MFAConfig struct {
@@ -101,7 +101,6 @@ func GetOktaDomain(region string) (string, error) {
 
 func NewOktaClient(creds OktaCreds, kr *keyring.Keyring, mfaConfig MFAConfig) (*OktaClient, error) {
 	var domain string
-	var OCKeyring keyring.Keyring
 
 	// maintain compatibility for deprecated creds.Organization
 	if creds.Domain == "" && creds.Organization != "" {
@@ -125,23 +124,7 @@ func NewOktaClient(creds OktaCreds, kr *keyring.Keyring, mfaConfig MFAConfig) (*
 		return nil, err
 	}
 
-	if kr != nil {
-		OCKeyring = *kr
-		//TODO: update this to be a property based on username
-		cookieItem, err := OCKeyring.Get("okta-session-cookie")
-		if err == nil {
-			jar.SetCookies(base, []*http.Cookie{
-				{
-					Name:  "sid",
-					Value: string(cookieItem.Data),
-				},
-			})
-			log.Debug("Using Okta session: ", string(cookieItem.Data))
-		}
-	}
-	log.Debug("domain: " + domain)
-
-	return &OktaClient{
+	oktaClient := OktaClient{
 		// Setting Organization for backwards compatibility
 		Organization: creds.Organization,
 		Username:     creds.Username,
@@ -151,8 +134,58 @@ func NewOktaClient(creds OktaCreds, kr *keyring.Keyring, mfaConfig MFAConfig) (*
 		Domain:       domain,
 		MFAConfig:    mfaConfig,
 		UserAuth:     &OktaUserAuthn{},
-		Keyring:      OCKeyring,
-	}, nil
+		Keyring:      kr,
+	}
+
+	oktaClient.retrieveSessionCookie()
+
+	log.Debug("domain: " + domain)
+
+	return &oktaClient, nil
+}
+
+func (o *OktaClient) retrieveSessionCookie() (err error) {
+
+	if o.Keyring == nil {
+		return
+	}
+	cookieItem, err := (*o.Keyring).Get(o.getSessionCookieKeyringKey())
+	if err == nil {
+		o.CookieJar.SetCookies(o.BaseURL, []*http.Cookie{
+			{
+				Name:  "sid",
+				Value: string(cookieItem.Data),
+			},
+		})
+		log.Debug("Using Okta session: ", string(cookieItem.Data))
+	}
+
+	return
+}
+
+func (o *OktaClient) getSessionCookieKeyringKey() string {
+	return "okta-session-cookie-" + o.Username
+}
+
+func (o *OktaClient) saveSessionCookie() (err error) {
+
+	if o.Keyring == nil {
+		return
+	}
+	cookies := o.CookieJar.Cookies(o.BaseURL)
+	for _, cookie := range cookies {
+		if cookie.Name == "sid" {
+			newCookieItem := keyring.Item{
+				Key:                         o.getSessionCookieKeyringKey(),
+				Data:                        []byte(cookie.Value),
+				Label:                       "okta session cookie for " + o.Username,
+				KeychainNotTrustApplication: false,
+			}
+			(*o.Keyring).Set(newCookieItem)
+			log.Debug("Saving Okta Session Cookie: ", cookie.Value)
+		}
+	}
+	return
 }
 
 func (o *OktaClient) AuthenticateUser() (err error) {
@@ -225,16 +258,6 @@ func (o *OktaClient) AuthenticateUser() (err error) {
 		return
 	}
 
-	log.Debug("Cookie Jar:")
-	cookies := o.CookieJar.Cookies(o.BaseURL)
-	for _, cookie := range cookies {
-		log.Debug("  ", cookie.Name, ": ", cookie.Value)
-	}
-	log.Debug("Cookie Reponse:")
-	cookies = sessionsResponse.Cookies()
-	for _, cookie := range cookies {
-		log.Debug("  ", cookie.Name, ": ", cookie.Value)
-	}
 	return
 }
 
@@ -296,19 +319,7 @@ func (o *OktaClient) AuthenticateProfileWithRegion(profileARN string, duration t
 		return sts.Credentials{}, err
 	}
 
-	cookies := o.CookieJar.Cookies(o.BaseURL)
-	for _, cookie := range cookies {
-		if cookie.Name == "sid" {
-			newCookieItem := keyring.Item{
-				Key:                         "okta-session-cookie",
-				Data:                        []byte(cookie.Value),
-				Label:                       "okta session cookie",
-				KeychainNotTrustApplication: false,
-			}
-			o.Keyring.Set(newCookieItem)
-			log.Debug("Saving Okta Session Cookie: ", cookie.Value)
-		}
-	}
+	o.saveSessionCookie()
 
 	return *samlResp.Credentials, nil
 }
@@ -335,11 +346,6 @@ func (o *OktaClient) AuthenticateOIDC(clientId string, authOpts map[string]strin
 	queryParams.Set("nonce", nonce.String())
 	queryParams.Set("state", state.String())
 
-	// Attempt to reuse session cookie
-	//idToken, err = o.GetOIDCToken(path, queryParams, state.String())
-	//if err != nil {
-	//log.Debug("Failed to reuse session token, starting flow from start")
-
 	if err = o.AuthenticateUser(); err != nil {
 		return
 	}
@@ -348,23 +354,8 @@ func (o *OktaClient) AuthenticateOIDC(clientId string, authOpts map[string]strin
 	log.Debug("Step: 3")
 	queryParams.Set("sessionToken", o.UserAuth.SessionToken)
 	idToken, err = o.GetOIDCToken(path, queryParams, state.String())
-	if err != nil {
-		return
-	}
-	//}
-
-	cookies := o.CookieJar.Cookies(o.BaseURL)
-	for _, cookie := range cookies {
-		if cookie.Name == "sid" {
-			newCookieItem := keyring.Item{
-				Key:                         "okta-session-cookie",
-				Data:                        []byte(cookie.Value),
-				Label:                       "okta session cookie",
-				KeychainNotTrustApplication: false,
-			}
-			o.Keyring.Set(newCookieItem)
-			log.Debug("Saving Okta Session Cookie: ", cookie.Value)
-		}
+	if err == nil {
+		o.saveSessionCookie()
 	}
 
 	return
@@ -757,17 +748,6 @@ func (o *OktaClient) request(method string, path string, queryParams url.Values,
 		Body:          ioutil.NopCloser(bytes.NewReader(data)),
 		ContentLength: int64(len(body)),
 	}
-	log.Debug("Cookie Request:")
-	cookies := req.Cookies()
-	for _, cookie := range cookies {
-		log.Debug("  ", cookie.Name, ": ", cookie.Value)
-	}
-	log.Debug("Cookie Jar:")
-	cookies = o.CookieJar.Cookies(o.BaseURL)
-	for _, cookie := range cookies {
-		log.Debug("  ", cookie.Name, ": ", cookie.Value)
-	}
-	log.Debug(method, " ", requestUrl)
 
 	res, err = client.Do(req)
 	return
@@ -814,16 +794,6 @@ func (o *OktaClient) GetOIDCToken(path string, queryParams url.Values, reqState 
 		return
 	}
 	defer res.Body.Close()
-	log.Debug("Cookie Reponse:")
-	cookies := res.Cookies()
-	for _, cookie := range cookies {
-		log.Debug("  ", cookie.Name, ": ", cookie.Value)
-	}
-	log.Debug("Cookie Jar:")
-	cookies = o.CookieJar.Cookies(o.BaseURL)
-	for _, cookie := range cookies {
-		log.Debug("  ", cookie.Name, ": ", cookie.Value)
-	}
 
 	if res.StatusCode != http.StatusFound {
 		err = fmt.Errorf("%s %v: %s", "GET", res.Request.URL, res.Status)
