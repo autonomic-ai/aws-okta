@@ -51,6 +51,7 @@ type OktaClient struct {
 	BaseURL      *url.URL
 	Domain       string
 	MFAConfig    MFAConfig
+	Keyring      keyring.Keyring
 }
 
 type MFAConfig struct {
@@ -74,7 +75,7 @@ type OktaCreds struct {
 
 func (c *OktaCreds) Validate(mfaConfig MFAConfig) error {
 	// OktaClient assumes we're doing some AWS SAML calls, but Validate doesn't
-	o, err := NewOktaClient(*c, "", mfaConfig)
+	o, err := NewOktaClient(*c, nil, mfaConfig)
 	if err != nil {
 		return err
 	}
@@ -98,8 +99,9 @@ func GetOktaDomain(region string) (string, error) {
 	return "", fmt.Errorf("invalid region %s", region)
 }
 
-func NewOktaClient(creds OktaCreds, sessionCookie string, mfaConfig MFAConfig) (*OktaClient, error) {
+func NewOktaClient(creds OktaCreds, kr *keyring.Keyring, mfaConfig MFAConfig) (*OktaClient, error) {
 	var domain string
+	var OCKeyring keyring.Keyring
 
 	// maintain compatibility for deprecated creds.Organization
 	if creds.Domain == "" && creds.Organization != "" {
@@ -123,15 +125,20 @@ func NewOktaClient(creds OktaCreds, sessionCookie string, mfaConfig MFAConfig) (
 		return nil, err
 	}
 
-	if sessionCookie != "" {
-		jar.SetCookies(base, []*http.Cookie{
-			{
-				Name:  "sid",
-				Value: sessionCookie,
-			},
-		})
+	if kr != nil {
+		OCKeyring = *kr
+		//TODO: update this to be a property based on username
+		cookieItem, err := OCKeyring.Get("okta-session-cookie")
+		if err == nil {
+			jar.SetCookies(base, []*http.Cookie{
+				{
+					Name:  "sid",
+					Value: string(cookieItem.Data),
+				},
+			})
+			log.Debug("Using Okta session: ", string(cookieItem.Data))
+		}
 	}
-	log.Debug("Using Okta session: ", sessionCookie)
 	log.Debug("domain: " + domain)
 
 	return &OktaClient{
@@ -143,29 +150,45 @@ func NewOktaClient(creds OktaCreds, sessionCookie string, mfaConfig MFAConfig) (
 		BaseURL:      base,
 		Domain:       domain,
 		MFAConfig:    mfaConfig,
-		UserAuth:     &OktaUserAuthn{SessionToken: sessionCookie},
+		UserAuth:     &OktaUserAuthn{},
+		Keyring:      OCKeyring,
 	}, nil
 }
 
-func (o *OktaClient) AuthenticateUser() error {
+func (o *OktaClient) AuthenticateUser() (err error) {
 	var oktaUserAuthn OktaUserAuthn
+	var sessionsResponse *http.Response
+	var mySessionResponse *http.Response
+	var payload []byte
+
+	// Step 0 : Check if we have valid session
+	log.Debug("Step: 0")
+	mySessionResponse, err = o.request("GET", "api/v1/sessions/me", url.Values{}, []byte{}, "json", false)
+	if err != nil {
+		return
+	}
+
+	defer mySessionResponse.Body.Close()
+	if mySessionResponse.StatusCode == http.StatusOK {
+		return
+	}
 
 	// Step 1 : Basic authentication
-
 	user := OktaUser{
 		Username: o.Username,
 		Password: o.Password,
 	}
 
-	payload, err := json.Marshal(user)
+	payload, err = json.Marshal(user)
 	if err != nil {
-		return err
+		return
 	}
 
 	log.Debug("Step: 1")
 	err = o.Get("POST", "api/v1/authn", payload, &oktaUserAuthn, "json")
 	if err != nil {
-		return fmt.Errorf("Failed to authenticate with okta. If your credentials have changed, use 'aws-okta add': %#v", err)
+		err = fmt.Errorf("Failed to authenticate with okta. If your credentials have changed, use 'aws-okta add': %#v", err)
+		return
 	}
 
 	o.UserAuth = &oktaUserAuthn
@@ -175,18 +198,51 @@ func (o *OktaClient) AuthenticateUser() error {
 	if o.UserAuth.Status == "MFA_REQUIRED" {
 		log.Info("Requesting MFA. Please complete two-factor authentication with your second device")
 		if err = o.challengeMFA(); err != nil {
-			return err
+			return
 		}
 	}
 
 	if o.UserAuth.SessionToken == "" {
 		return fmt.Errorf("authentication failed for %s", o.Username)
 	}
+	payload, err = json.Marshal(&SessionRequest{SessionToken: o.UserAuth.SessionToken})
+	if err != nil {
+		return
+	}
 
-	return nil
+	return
+
+	sessionsResponse, err = o.request("POST", "api/v1/sessions", url.Values{}, payload, "json", false)
+	if err != nil {
+		log.Debug(err)
+		return
+	}
+
+	defer sessionsResponse.Body.Close()
+	if sessionsResponse.StatusCode != http.StatusOK {
+		err = fmt.Errorf("authentication failed for %s", o.Username)
+		log.Debug(err)
+		return
+	}
+
+	log.Debug("Cookie Jar:")
+	cookies := o.CookieJar.Cookies(o.BaseURL)
+	for _, cookie := range cookies {
+		log.Debug("  ", cookie.Name, ": ", cookie.Value)
+	}
+	log.Debug("Cookie Reponse:")
+	cookies = sessionsResponse.Cookies()
+	for _, cookie := range cookies {
+		log.Debug("  ", cookie.Name, ": ", cookie.Value)
+	}
+	return
 }
 
-func (o *OktaClient) AuthenticateProfileWithRegion(profileARN string, duration time.Duration, oktaAwsSAMLUrl string, region string) (sts.Credentials, string, error) {
+type SessionRequest struct {
+	SessionToken string `json:"sessionToken"`
+}
+
+func (o *OktaClient) AuthenticateProfileWithRegion(profileARN string, duration time.Duration, oktaAwsSAMLUrl string, region string) (sts.Credentials, error) {
 
 	// Attempt to reuse session cookie
 	var assertion SAMLAssertion
@@ -196,20 +252,20 @@ func (o *OktaClient) AuthenticateProfileWithRegion(profileARN string, duration t
 		log.Debug("Failed to reuse session token, starting flow from start")
 
 		if err := o.AuthenticateUser(); err != nil {
-			return sts.Credentials{}, "", err
+			return sts.Credentials{}, err
 		}
 
 		// Step 3 : Get SAML Assertion and retrieve IAM Roles
 		log.Debug("Step: 3")
 		if err = o.GetAwsSAML(oktaAwsSAMLUrl+"?onetimetoken="+o.UserAuth.SessionToken,
 			nil, &assertion, "saml"); err != nil {
-			return sts.Credentials{}, "", err
+			return sts.Credentials{}, err
 		}
 	}
 
 	principal, role, err := GetRoleFromSAML(assertion.Resp, profileARN)
 	if err != nil {
-		return sts.Credentials{}, "", err
+		return sts.Credentials{}, err
 	}
 
 	// Step 4 : Assume Role with SAML
@@ -237,21 +293,27 @@ func (o *OktaClient) AuthenticateProfileWithRegion(profileARN string, duration t
 	if err != nil {
 		log.WithField("role", role).Errorf(
 			"error assuming role with SAML: %s", err.Error())
-		return sts.Credentials{}, "", err
+		return sts.Credentials{}, err
 	}
 
-	var sessionCookie string
 	cookies := o.CookieJar.Cookies(o.BaseURL)
 	for _, cookie := range cookies {
 		if cookie.Name == "sid" {
-			sessionCookie = cookie.Value
+			newCookieItem := keyring.Item{
+				Key:                         "okta-session-cookie",
+				Data:                        []byte(cookie.Value),
+				Label:                       "okta session cookie",
+				KeychainNotTrustApplication: false,
+			}
+			o.Keyring.Set(newCookieItem)
+			log.Debug("Saving Okta Session Cookie: ", cookie.Value)
 		}
 	}
 
-	return *samlResp.Credentials, sessionCookie, nil
+	return *samlResp.Credentials, nil
 }
 
-func (o *OktaClient) AuthenticateOIDC(clientId string) (idToken string, sessionCookie string, err error) {
+func (o *OktaClient) AuthenticateOIDC(clientId string, authOpts map[string]string) (idToken string, err error) {
 	var state uuid.UUID
 	var nonce uuid.UUID
 	state, err = uuid.NewUUID()
@@ -263,46 +325,53 @@ func (o *OktaClient) AuthenticateOIDC(clientId string) (idToken string, sessionC
 		return
 	}
 
-	/*
-		TODO:
-			- use url.Values instead of a string so we can get proper encoding for the
-				param values
-			- confirm that the claims on the token are correct.
-					-- some config changes in Okta may be required...
-
-	*/
-	oktaOIDCUrl := "oauth2/v1/authorize?"
-	oktaOIDCUrl += "client_id=" + clientId
-	oktaOIDCUrl += "&response_type=id_token"
-	oktaOIDCUrl += "&scope=openid+profile+groups+email"
-	oktaOIDCUrl += "&prompt=none"
-	oktaOIDCUrl += "&redirect_uri=https://127.0.0.1:7789/callback"
-	oktaOIDCUrl += "&nonce=" + nonce.String()
-	oktaOIDCUrl += "&state=" + state.String()
+	path := "oauth2/v1/authorize"
+	queryParams := url.Values{}
+	queryParams.Set("client_id", clientId)
+	queryParams.Set("response_type", "id_token")
+	queryParams.Set("scope", "openid profile groups email")
+	queryParams.Set("prompt", "none")
+	queryParams.Set("redirect_uri", "https://127.0.0.1:7789/callback")
+	queryParams.Set("nonce", nonce.String())
+	queryParams.Set("state", state.String())
 
 	// Attempt to reuse session cookie
-	idToken, err = o.GetOIDCToken(oktaOIDCUrl+"&sessionToken="+o.UserAuth.SessionToken, state.String())
+	//idToken, err = o.GetOIDCToken(path, queryParams, state.String())
+	//if err != nil {
+	//log.Debug("Failed to reuse session token, starting flow from start")
+
+	if err = o.AuthenticateUser(); err != nil {
+		return
+	}
+
+	// Step 3 : Get SAML Assertion and retrieve IAM Roles
+	log.Debug("Step: 3")
+	queryParams.Set("sessionToken", o.UserAuth.SessionToken)
+	idToken, err = o.GetOIDCToken(path, queryParams, state.String())
 	if err != nil {
-		log.Debug("Failed to reuse session token, starting flow from start")
+		return
+	}
+	//}
 
-		if err = o.AuthenticateUser(); err != nil {
-			return
-		}
-
-		// Step 3 : Get SAML Assertion and retrieve IAM Roles
-		log.Debug("Step: 3")
-		idToken, err = o.GetOIDCToken(oktaOIDCUrl+"&sessionToken="+o.UserAuth.SessionToken, state.String())
-		if err != nil {
-			return
+	cookies := o.CookieJar.Cookies(o.BaseURL)
+	for _, cookie := range cookies {
+		if cookie.Name == "sid" {
+			newCookieItem := keyring.Item{
+				Key:                         "okta-session-cookie",
+				Data:                        []byte(cookie.Value),
+				Label:                       "okta session cookie",
+				KeychainNotTrustApplication: false,
+			}
+			o.Keyring.Set(newCookieItem)
+			log.Debug("Saving Okta Session Cookie: ", cookie.Value)
 		}
 	}
 
-	sessionCookie = o.UserAuth.SessionToken
 	return
 }
 
 //## TODO: update signature to pass in saml url
-func (o *OktaClient) AuthenticateProfile(profileARN string, duration time.Duration, oktaAwsSAMLUrl string) (sts.Credentials, string, error) {
+func (o *OktaClient) AuthenticateProfile(profileARN string, duration time.Duration, oktaAwsSAMLUrl string) (sts.Credentials, error) {
 	return o.AuthenticateProfileWithRegion(profileARN, duration, oktaAwsSAMLUrl, "")
 }
 
@@ -632,18 +701,19 @@ func (o *OktaClient) Get(method string, path string, data []byte, recv interface
 	return
 }
 
-func (o *OktaClient) request(method string, path string, data []byte, format string, followRedirects bool) (res *http.Response, err error) {
+func (o *OktaClient) request(method string, path string, queryParams url.Values, data []byte, format string, followRedirects bool) (res *http.Response, err error) {
 	//var res *http.Response
 	var body []byte
 	var header http.Header
 	var client http.Client
 
-	url, err := url.Parse(fmt.Sprintf(
+	requestUrl, err := url.Parse(fmt.Sprintf(
 		"%s/%s", o.BaseURL, path,
 	))
 	if err != nil {
 		return
 	}
+	requestUrl.RawQuery = queryParams.Encode()
 
 	if format == "json" {
 		header = http.Header{
@@ -679,7 +749,7 @@ func (o *OktaClient) request(method string, path string, data []byte, format str
 
 	req := &http.Request{
 		Method:        method,
-		URL:           url,
+		URL:           requestUrl,
 		Proto:         "HTTP/1.1",
 		ProtoMajor:    1,
 		ProtoMinor:    1,
@@ -687,15 +757,25 @@ func (o *OktaClient) request(method string, path string, data []byte, format str
 		Body:          ioutil.NopCloser(bytes.NewReader(data)),
 		ContentLength: int64(len(body)),
 	}
-
-	log.Debug(method, " ", url)
+	log.Debug("Cookie Request:")
+	cookies := req.Cookies()
+	for _, cookie := range cookies {
+		log.Debug("  ", cookie.Name, ": ", cookie.Value)
+	}
+	log.Debug("Cookie Jar:")
+	cookies = o.CookieJar.Cookies(o.BaseURL)
+	for _, cookie := range cookies {
+		log.Debug("  ", cookie.Name, ": ", cookie.Value)
+	}
+	log.Debug(method, " ", requestUrl)
 
 	res, err = client.Do(req)
 	return
 }
 
 func (o *OktaClient) GetAwsSAML(path string, data []byte, recv interface{}, format string) (err error) {
-	res, err := o.request("GET", path, data, format, true)
+	// Upstream provides queryParams in the path and so we pass an empty Values to request
+	res, err := o.request("GET", path, url.Values{}, data, format, true)
 	if err != nil {
 		return
 	}
@@ -725,15 +805,25 @@ func (o *OktaClient) GetAwsSAML(path string, data []byte, recv interface{}, form
 /*
 - fix session so we dont need to re-auth.
 */
-func (o *OktaClient) GetOIDCToken(path string, reqState string) (idToken string, err error) {
+func (o *OktaClient) GetOIDCToken(path string, queryParams url.Values, reqState string) (idToken string, err error) {
 	var queryValues url.Values
 	var redirectUrl *url.URL
 
-	res, err := o.request("GET", path, []byte(""), "json", false)
+	res, err := o.request("GET", path, queryParams, []byte(""), "json", false)
 	if err != nil {
 		return
 	}
 	defer res.Body.Close()
+	log.Debug("Cookie Reponse:")
+	cookies := res.Cookies()
+	for _, cookie := range cookies {
+		log.Debug("  ", cookie.Name, ": ", cookie.Value)
+	}
+	log.Debug("Cookie Jar:")
+	cookies = o.CookieJar.Cookies(o.BaseURL)
+	for _, cookie := range cookies {
+		log.Debug("  ", cookie.Name, ": ", cookie.Value)
+	}
 
 	if res.StatusCode != http.StatusFound {
 		err = fmt.Errorf("%s %v: %s", "GET", res.Request.URL, res.Status)
@@ -827,19 +917,12 @@ func (p *OktaProvider) RetrieveOIDC(clientId string) (idToken string, err error)
 		return
 	}
 
-	// Check for stored session cookie
-	var sessionCookie string
-	cookieItem, err := p.Keyring.Get(p.OktaSessionCookieKey)
-	if err == nil {
-		sessionCookie = string(cookieItem.Data)
-	}
-
-	oktaClient, err := NewOktaClient(oktaCreds, sessionCookie, p.MFAConfig)
+	oktaClient, err := NewOktaClient(oktaCreds, &p.Keyring, p.MFAConfig)
 	if err != nil {
 		return
 	}
 
-	idToken, newSessionCookie, err := oktaClient.AuthenticateOIDC(clientId)
+	idToken, err = oktaClient.AuthenticateOIDC(clientId, map[string]string{})
 	if err != nil {
 		return
 	}
@@ -857,14 +940,6 @@ func (p *OktaProvider) RetrieveOIDC(clientId string) (idToken string, err error)
 	}
 	p.Keyring.Set(newIdTokenItem)
 
-	newCookieItem := keyring.Item{
-		Key:                         p.OktaSessionCookieKey,
-		Data:                        []byte(newSessionCookie),
-		Label:                       "okta session cookie",
-		KeychainNotTrustApplication: false,
-	}
-	p.Keyring.Set(newCookieItem)
-
 	return
 }
 
@@ -881,31 +956,15 @@ func (p *OktaProvider) Retrieve() (sts.Credentials, string, error) {
 		return sts.Credentials{}, "", errors.New("Failed to get okta credentials from your keyring.  Please make sure you have added okta credentials with `aws-okta add`")
 	}
 
-	// Check for stored session cookie
-	var sessionCookie string
-	cookieItem, err := p.Keyring.Get(p.OktaSessionCookieKey)
-	if err == nil {
-		sessionCookie = string(cookieItem.Data)
-	}
-
-	oktaClient, err := NewOktaClient(oktaCreds, sessionCookie, p.MFAConfig)
+	oktaClient, err := NewOktaClient(oktaCreds, &p.Keyring, p.MFAConfig)
 	if err != nil {
 		return sts.Credentials{}, "", err
 	}
 
-	creds, newSessionCookie, err := oktaClient.AuthenticateProfileWithRegion(p.ProfileARN, p.SessionDuration, p.OktaAwsSAMLUrl, p.AwsRegion)
+	creds, err := oktaClient.AuthenticateProfileWithRegion(p.ProfileARN, p.SessionDuration, p.OktaAwsSAMLUrl, p.AwsRegion)
 	if err != nil {
 		return sts.Credentials{}, "", err
 	}
-
-	newCookieItem := keyring.Item{
-		Key:                         p.OktaSessionCookieKey,
-		Data:                        []byte(newSessionCookie),
-		Label:                       "okta session cookie",
-		KeychainNotTrustApplication: false,
-	}
-
-	p.Keyring.Set(newCookieItem)
 
 	return creds, oktaCreds.Username, err
 }
