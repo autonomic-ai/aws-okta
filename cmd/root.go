@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"time"
 
 	"errors"
 
@@ -94,6 +95,25 @@ func prerunE(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	if err := loadStringFlagFromEnv(cmd,
+		"mfa-duo-device",
+		"AWS_OKTA_MFA_DUO_DEVICE",
+		&(mfaConfig.DuoDevice)); err != nil {
+		log.Warn("failed to parse string from AWS_OKTA_MFA_DUO_DEVICE")
+	}
+	if err := loadStringFlagFromEnv(cmd,
+		"mfa-factor-type",
+		"AWS_OKTA_MFA_FACTOR_TYPE",
+		&(mfaConfig.FactorType)); err != nil {
+		log.Warn("failed to parse string from AWS_OKTA_MFA_FACTOR_TYPE")
+	}
+	if err := loadStringFlagFromEnv(cmd,
+		"mfa-provider",
+		"AWS_OKTA_MFA_PROVIDER",
+		&(mfaConfig.Provider)); err != nil {
+		log.Warn("failed to parse string from AWS_OKTA_MFA_PROVIDER")
+	}
+
 	if analyticsEnabled {
 		// set up analytics client
 		analyticsClient, _ = analytics.NewWithConfig(analyticsWriteKey, analytics.Config{
@@ -162,4 +182,39 @@ func updateMfaConfig(cmd *cobra.Command, profiles lib.Profiles, profile string, 
 			}
 		}
 	}
+}
+
+func loadDurationFlagFromEnv(cmd *cobra.Command, flagName string, envVar string, val *time.Duration) error {
+	if cmd.Flags().Lookup(flagName).Changed {
+		return nil
+	}
+
+	fromEnv, ok := os.LookupEnv(envVar)
+	if !ok {
+		return nil
+	}
+
+	dur, err := time.ParseDuration(fromEnv)
+	if err != nil {
+		return err
+	}
+
+	cmd.Flags().Lookup(flagName).Changed = true
+	*val = dur
+	return nil
+}
+
+func loadStringFlagFromEnv(cmd *cobra.Command, flagName string, envVar string, val *string) error {
+	if cmd.Flags().Lookup(flagName).Changed {
+		return nil
+	}
+
+	fromEnv, ok := os.LookupEnv(envVar)
+	if !ok {
+		return nil
+	}
+
+	cmd.Flags().Lookup(flagName).Changed = true
+	*val = fromEnv
+	return nil
 }

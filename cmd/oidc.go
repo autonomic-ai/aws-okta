@@ -14,6 +14,7 @@ import (
 
 	"github.com/99designs/keyring"
 	"github.com/segmentio/aws-okta/lib"
+	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
@@ -63,9 +64,7 @@ func oidcRun(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// TODO: decouple okta auth and SAML auth
-	updateMfaConfig(cmd, profiles, "okta", &mfaConfig)
-
+	log.Debug("MFA Config:\n", mfaConfig)
 	opts := lib.ProviderOptions{
 		MFAConfig:          mfaConfig,
 		Profiles:           profiles,

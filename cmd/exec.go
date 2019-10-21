@@ -49,41 +49,6 @@ func init() {
 	execCmd.Flags().StringVarP(&assumeRoleARN, "assume-role-arn", "r", "", "Role arn to assume, overrides arn in profile")
 }
 
-func loadDurationFlagFromEnv(cmd *cobra.Command, flagName string, envVar string, val *time.Duration) error {
-	if cmd.Flags().Lookup(flagName).Changed {
-		return nil
-	}
-
-	fromEnv, ok := os.LookupEnv(envVar)
-	if !ok {
-		return nil
-	}
-
-	dur, err := time.ParseDuration(fromEnv)
-	if err != nil {
-		return err
-	}
-
-	cmd.Flags().Lookup(flagName).Changed = true
-	*val = dur
-	return nil
-}
-
-func loadStringFlagFromEnv(cmd *cobra.Command, flagName string, envVar string, val *string) error {
-	if cmd.Flags().Lookup(flagName).Changed {
-		return nil
-	}
-
-	fromEnv, ok := os.LookupEnv(envVar)
-	if !ok {
-		return nil
-	}
-
-	cmd.Flags().Lookup(flagName).Changed = true
-	*val = fromEnv
-	return nil
-}
-
 func updateDurationFromConfigProfile(profiles lib.Profiles, profile string, val *time.Duration) error {
 	fromProfile, _, err := profiles.GetValue(profile, "assume_role_ttl")
 	if err != nil {
