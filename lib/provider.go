@@ -209,25 +209,6 @@ func (p *Provider) getOktaAccountName() string {
 	return "okta-creds-" + oktaAccountName
 }
 
-func (p *Provider) GetOIDCToken(clientId string) (idToken string, err error) {
-	//oktaSessionCookieKey := p.getOktaSessionCookieKey()
-	oktaAccountName := p.getOktaAccountName()
-
-	oktaProvider := OktaProvider{
-		MFAConfig:       p.ProviderOptions.MFAConfig,
-		Keyring:         p.keyring,
-		ProfileARN:      "not-used",
-		SessionDuration: p.SessionDuration,
-		OktaAwsSAMLUrl:  "not-used",
-		//OktaSessionCookieKey: oktaSessionCookieKey,
-		OktaAccountName: oktaAccountName,
-	}
-
-	idToken, err = oktaProvider.RetrieveOIDC(clientId)
-
-	return
-}
-
 func (p *Provider) getSamlSessionCreds() (sts.Credentials, error) {
 	var profileARN string
 	var ok bool

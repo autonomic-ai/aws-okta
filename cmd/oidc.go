@@ -54,23 +54,7 @@ func oidcRun(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("Error: unsupported output format %s", outputFormat)
 	}
 
-	config, err := lib.NewConfigFromEnv()
-	if err != nil {
-		return err
-	}
-
-	profiles, err := config.Parse()
-	if err != nil {
-		return err
-	}
-
 	log.Debug("MFA Config:\n", mfaConfig)
-	opts := lib.ProviderOptions{
-		MFAConfig:          mfaConfig,
-		Profiles:           profiles,
-		SessionDuration:    sessionTTL,
-		AssumeRoleDuration: assumeRoleTTL,
-	}
 
 	var allowedBackends []keyring.BackendType
 	if backend != "" {
@@ -81,14 +65,12 @@ func oidcRun(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	opts.SessionCacheSingleItem = flagSessionCacheSingleItem
-
-	p, err := lib.NewProvider(kr, "okta", opts)
+	p, err := lib.NewOIDCProvider(kr, mfaConfig)
 	if err != nil {
 		return err
 	}
 
-	idToken, err := p.GetOIDCToken(clientId)
+	idToken, err := p.Retrieve(clientId)
 	if err != nil {
 		return err
 	}
