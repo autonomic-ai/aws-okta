@@ -18,7 +18,14 @@ import (
 )
 
 var (
-	clientId string
+	clientId      string
+	outputFormat  string
+	outputFormats = map[string]bool{execCredentials: true, plaintext: true}
+)
+
+const (
+	execCredentials = "exec-credentials"
+	plaintext       = "plaintext"
 )
 
 // oidcCmd represents the oidc command
@@ -32,6 +39,7 @@ var oidcCmd = &cobra.Command{
 func init() {
 	RootCmd.AddCommand(oidcCmd)
 	oidcCmd.Flags().StringVarP(&clientId, "client-id", "c", "", "Client Id to use")
+	oidcCmd.Flags().StringVarP(&outputFormat, "output-format", "o", "exec-credentials", "Output Format [*exec-credentials|plaintext]")
 	oidcCmd.MarkFlagRequired("client-id")
 }
 
@@ -39,6 +47,10 @@ func oidcRun(cmd *cobra.Command, args []string) error {
 	if clientId == "" {
 		fmt.Fprintln(os.Stderr, "Error: Flag --client-id is required")
 		return ErrTooFewArguments
+	}
+
+	if _, ok := outputFormats[outputFormat]; !ok {
+		return fmt.Errorf("Error: unsupported output format %s", outputFormat)
 	}
 
 	config, err := lib.NewConfigFromEnv()
@@ -81,22 +93,26 @@ func oidcRun(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	/*
-	   {"kind":"ExecCredential","apiVersion":"client.authentication.k8s.io/v1alpha1","spec":{},"status":{"token":"alicloud.v1.tokenaHR0cHM6Ly9zdHMuYWxpeXVuY3MuY29tLz9BY2Nlc3NLZXlJZD1MVEFJbGZnOFY0bVpNa0YwJkFjdGlvbj1HZXRDYWxsZXJJZGVudGl0eSZGb3JtYXQ9SlNPTiZSZWdpb25JZD1jbi1zaGFuZ2hhaSZTaWduYXR1cmU9ZTBDSkY3QmdBJTJGMDJJd1hxeUNOUXZnbnM3UFklM0QmU2lnbmF0dXJlTWV0aG9kPUhNQUMtU0hBMSZTaWduYXR1cmVOb25jZT03Zjg3NTg3MzhjZDc0ZGIzYjBkNDY0MDcyOTQ2ODBjZiZTaWduYXR1cmVUeXBlPSZTaWduYXR1cmVWZXJzaW9uPTEuMCZUaW1lc3RhbXA9MjAxOS0xMC0xN1QyMCUzQTMyJTNBMjhaJlZlcnNpb249MjAxNS0wNC0wMQ=="}}
-	*/
-	k8sToken := KubernetesToken{
-		Kind:       "ExecCredential",
-		ApiVersion: "client.authentication.k8s.io/v1alpha1",
-		Spec:       map[string]string{},
-		Status:     OIDCToken{Token: idToken},
+
+	switch outputFormat {
+	case "plaintext":
+		fmt.Println(idToken)
+	default: /*case "exec-credentials"*/
+		k8sToken := KubernetesToken{
+			Kind:       "ExecCredential",
+			ApiVersion: "client.authentication.k8s.io/v1alpha1",
+			Spec:       map[string]string{},
+			Status:     OIDCToken{Token: idToken},
+		}
+
+		output, err := json.Marshal(k8sToken)
+		if err != nil {
+			return err
+		}
+
+		os.Stdout.Write(output)
 	}
-	output, err := json.Marshal(k8sToken)
-	if err != nil {
-		return err
-	}
-	os.Stdout.Write(output)
-	//fmt.Println(string(output))
-	//"{"kind":"ExecCredential","apiVersion":"client.authentication.k8s.io/v1alpha1","spec":{},"status":{"token":""}} %s", idToken)
+
 	return nil
 }
 
