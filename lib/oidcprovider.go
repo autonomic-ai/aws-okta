@@ -79,7 +79,11 @@ func (p *OIDCProvider) Retrieve(clientId string) (idToken string, err error) {
 		Label:                       "okta OIDC Token",
 		KeychainNotTrustApplication: false,
 	}
-	p.keyring.Set(newIdTokenItem)
+	err = p.keyring.Set(newIdTokenItem)
+	if err != nil {
+		log.Debug("Saving new id token failed")
+		return
+	}
 
 	return
 }

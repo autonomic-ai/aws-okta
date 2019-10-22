@@ -69,7 +69,7 @@ func writeToCredentialsRun(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	opts := lib.ProviderOptions{
+	opts := lib.AwsSamlProviderOptions{
 		MFAConfig:          mfaConfig,
 		Profiles:           profiles,
 		SessionDuration:    sessionTTL,
@@ -100,7 +100,7 @@ func writeToCredentialsRun(cmd *cobra.Command, args []string) error {
 
 	opts.SessionCacheSingleItem = flagSessionCacheSingleItem
 
-	p, err := lib.NewProvider(kr, profile, opts)
+	p, err := lib.NewAwsSamlProvider(kr, profile, opts)
 	if err != nil {
 		return err
 	}

@@ -14,7 +14,6 @@ import (
 
 	"github.com/99designs/keyring"
 	"github.com/segmentio/aws-okta/lib"
-	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
@@ -53,8 +52,6 @@ func oidcRun(cmd *cobra.Command, args []string) error {
 	if _, ok := outputFormats[outputFormat]; !ok {
 		return fmt.Errorf("Error: unsupported output format %s", outputFormat)
 	}
-
-	log.Debug("MFA Config:\n", mfaConfig)
 
 	var allowedBackends []keyring.BackendType
 	if backend != "" {

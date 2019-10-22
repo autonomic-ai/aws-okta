@@ -79,7 +79,7 @@ func loginRun(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	opts := lib.ProviderOptions{
+	opts := lib.AwsSamlProviderOptions{
 		MFAConfig:          mfaConfig,
 		Profiles:           profiles,
 		SessionDuration:    sessionTTL,
@@ -109,7 +109,7 @@ func loginRun(cmd *cobra.Command, args []string) error {
 
 	opts.SessionCacheSingleItem = flagSessionCacheSingleItem
 
-	p, err := lib.NewProvider(kr, profile, opts)
+	p, err := lib.NewAwsSamlProvider(kr, profile, opts)
 	if err != nil {
 		return err
 	}
@@ -120,7 +120,7 @@ func loginRun(cmd *cobra.Command, args []string) error {
 	return federatedLogin(p, profile, profiles)
 }
 
-func oktaLogin(p *lib.Provider) error {
+func oktaLogin(p *lib.AwsSamlProvider) error {
 	loginURL, err := p.GetSAMLLoginURL()
 	if err != nil {
 		return err
@@ -135,7 +135,7 @@ func oktaLogin(p *lib.Provider) error {
 	return nil
 }
 
-func federatedLogin(p *lib.Provider, profile string, profiles lib.Profiles) error {
+func federatedLogin(p *lib.AwsSamlProvider, profile string, profiles lib.Profiles) error {
 	creds, err := p.Retrieve()
 	if err != nil {
 		return err

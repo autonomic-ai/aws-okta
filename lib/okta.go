@@ -16,11 +16,7 @@ import (
 	"golang.org/x/net/publicsuffix"
 
 	"github.com/99designs/keyring"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/segmentio/aws-okta/lib/mfa"
-	"github.com/segmentio/aws-okta/lib/saml"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -56,11 +52,6 @@ type MFAConfig struct {
 	Provider   string // Which MFA provider to use when presented with an MFA challenge
 	FactorType string // Which of the factor types of the MFA provider to use
 	DuoDevice  string // Which DUO device to use for DUO MFA
-}
-
-type SAMLAssertion struct {
-	Resp    *saml.Response
-	RawData []byte
 }
 
 type OktaCreds struct {
@@ -179,7 +170,10 @@ func (o *OktaClient) saveSessionCookie() (err error) {
 				Label:                       "okta session cookie for " + o.Username,
 				KeychainNotTrustApplication: false,
 			}
-			(*o.Keyring).Set(newCookieItem)
+			err = (*o.Keyring).Set(newCookieItem)
+			if err != nil {
+				return
+			}
 			log.Debug("Saving Okta Session Cookie: ", cookie.Value)
 		}
 	}
@@ -204,7 +198,6 @@ func (o *OktaClient) ValidateSession() (sessionValid bool, err error) {
 }
 
 func (o *OktaClient) AuthenticateUser() (err error) {
-	var oktaUserAuthn OktaUserAuthn
 	var payload []byte
 
 	// Step 1 : Basic authentication
@@ -219,13 +212,17 @@ func (o *OktaClient) AuthenticateUser() (err error) {
 	}
 
 	log.Debug("Step: 1")
-	err = o.Get("POST", "api/v1/authn", payload, &oktaUserAuthn, "json")
+	res, err := o.request("POST", "api/v1/authn", url.Values{}, payload, "json", true)
 	if err != nil {
 		err = fmt.Errorf("Failed to authenticate with okta. If your credentials have changed, use 'aws-okta add': %#v", err)
 		return
 	}
+	defer res.Body.Close()
 
-	o.UserAuth = &oktaUserAuthn
+	err = json.NewDecoder(res.Body).Decode(&o.UserAuth)
+	if err != nil {
+		return
+	}
 
 	// Step 2 : Challenge MFA if needed
 	log.Debug("Step: 2")
@@ -239,96 +236,11 @@ func (o *OktaClient) AuthenticateUser() (err error) {
 	if o.UserAuth.SessionToken == "" {
 		return fmt.Errorf("authentication failed for %s", o.Username)
 	}
-	//	payload, err = json.Marshal(&SessionRequest{SessionToken: o.UserAuth.SessionToken})
-	//	if err != nil {
-	//		return
-	//	}
-
 	return
-
-	//	sessionsResponse, err = o.request("POST", "api/v1/sessions", url.Values{}, payload, "json", false)
-	//	if err != nil {
-	//		log.Debug(err)
-	//		return
-	//	}
-
-	//	defer sessionsResponse.Body.Close()
-	//	if sessionsResponse.StatusCode != http.StatusOK {
-	//		err = fmt.Errorf("authentication failed for %s", o.Username)
-	//		log.Debug(err)
-	//		return
-	//	}
-
-	///	return
 }
 
 type SessionRequest struct {
 	SessionToken string `json:"sessionToken"`
-}
-
-func (o *OktaClient) AuthenticateProfileWithRegion(profileARN string, duration time.Duration, oktaAwsSAMLUrl string, region string) (sts.Credentials, error) {
-
-	// Attempt to reuse session cookie
-	var assertion SAMLAssertion
-	queryParams := url.Values{}
-
-	err := o.GetAwsSAML(oktaAwsSAMLUrl, queryParams, nil, &assertion, "saml")
-	if err != nil {
-		log.Debug("Failed to reuse session token, starting flow from start")
-
-		if err := o.AuthenticateUser(); err != nil {
-			return sts.Credentials{}, err
-		}
-
-		// Step 3 : Get SAML Assertion and retrieve IAM Roles
-		log.Debug("Step: 3")
-		queryParams.Set("onetimetoken", o.UserAuth.SessionToken)
-		if err = o.GetAwsSAML(oktaAwsSAMLUrl, queryParams, nil, &assertion, "saml"); err != nil {
-			return sts.Credentials{}, err
-		}
-	}
-
-	principal, role, err := GetRoleFromSAML(assertion.Resp, profileARN)
-	if err != nil {
-		return sts.Credentials{}, err
-	}
-
-	// Step 4 : Assume Role with SAML
-	log.Debug("Step 4: Assume Role with SAML")
-	var samlSess *session.Session
-	if region != "" {
-		log.Debugf("Using region: %s\n", region)
-		conf := &aws.Config{
-			Region: aws.String(region),
-		}
-		samlSess = session.Must(session.NewSession(conf))
-	} else {
-		samlSess = session.Must(session.NewSession())
-	}
-	svc := sts.New(samlSess)
-
-	samlParams := &sts.AssumeRoleWithSAMLInput{
-		PrincipalArn:    aws.String(principal),
-		RoleArn:         aws.String(role),
-		SAMLAssertion:   aws.String(string(assertion.RawData)),
-		DurationSeconds: aws.Int64(int64(duration.Seconds())),
-	}
-
-	samlResp, err := svc.AssumeRoleWithSAML(samlParams)
-	if err != nil {
-		log.WithField("role", role).Errorf(
-			"error assuming role with SAML: %s", err.Error())
-		return sts.Credentials{}, err
-	}
-
-	o.saveSessionCookie()
-
-	return *samlResp.Credentials, nil
-}
-
-//## TODO: update signature to pass in saml url
-func (o *OktaClient) AuthenticateProfile(profileARN string, duration time.Duration, oktaAwsSAMLUrl string) (sts.Credentials, error) {
-	return o.AuthenticateProfileWithRegion(profileARN, duration, oktaAwsSAMLUrl, "")
 }
 
 func selectMFADeviceFromConfig(o *OktaClient) (*OktaUserAuthnFactor, error) {
@@ -405,14 +317,13 @@ func (o *OktaClient) preChallenge(oktaFactorId, oktaFactorType string) ([]byte, 
 		if err != nil {
 			return nil, err
 		}
-		var sms interface{}
 		log.Debug("Requesting SMS Code")
-		err = o.Get("POST", "api/v1/authn/factors/"+oktaFactorId+"/verify",
-			payload, &sms, "json",
-		)
+		res, err := o.request("POST", "api/v1/authn/factors/"+oktaFactorId+"/verify", url.Values{}, payload, "json", true)
 		if err != nil {
 			return nil, err
 		}
+		defer res.Body.Close()
+
 		mfaCode, err = Prompt("Enter MFA Code from SMS", false)
 		if err != nil {
 			return nil, err
@@ -496,11 +407,15 @@ func (o *OktaClient) postChallenge(payload []byte, oktaFactorProvider string, ok
 					return fmt.Errorf("Failed Duo challenge. Err: %s", duoErr)
 				}
 			default:
-				err := o.Get("POST", "api/v1/authn/factors/"+oktaFactorId+"/verify",
-					payload, &o.UserAuth, "json",
-				)
+				res, err := o.request("POST", "api/v1/authn/factors/"+oktaFactorId+"/verify", url.Values{}, payload, "json", true)
 				if err != nil {
 					return fmt.Errorf("Failed authn verification for okta. Err: %s", err)
+				}
+				defer res.Body.Close()
+
+				err = json.NewDecoder(res.Body).Decode(&o.UserAuth)
+				if err != nil {
+					return err
 				}
 			}
 			time.Sleep(2 * time.Second)
@@ -538,9 +453,13 @@ func (o *OktaClient) challengeMFA() (err error) {
 
 	payload, err = o.preChallenge(oktaFactorId, oktaFactorType)
 
-	err = o.Get("POST", "api/v1/authn/factors/"+oktaFactorId+"/verify",
-		payload, &o.UserAuth, "json",
-	)
+	res, err := o.request("POST", "api/v1/authn/factors/"+oktaFactorId+"/verify", url.Values{}, payload, "json", true)
+	if err != nil {
+		return fmt.Errorf("Failed authn verification for okta. Err: %s", err)
+	}
+	defer res.Body.Close()
+
+	err = json.NewDecoder(res.Body).Decode(&o.UserAuth)
 	if err != nil {
 		return
 	}
@@ -580,80 +499,6 @@ func GetFactorId(f *OktaUserAuthnFactor) (id string, err error) {
 	default:
 		err = fmt.Errorf("factor %s not supported", f.FactorType)
 	}
-	return
-}
-
-func (o *OktaClient) Get(method string, path string, data []byte, recv interface{}, format string) (err error) {
-	var res *http.Response
-	var body []byte
-	var header http.Header
-	var client http.Client
-
-	url, err := url.Parse(fmt.Sprintf(
-		"%s/%s", o.BaseURL, path,
-	))
-	if err != nil {
-		return err
-	}
-
-	if format == "json" {
-		header = http.Header{
-			"Accept":        []string{"application/json"},
-			"Content-Type":  []string{"application/json"},
-			"Cache-Control": []string{"no-cache"},
-		}
-	} else {
-		// disable gzip encoding; it was causing spurious EOFs
-		// for some users; see #148
-		header = http.Header{
-			"Accept-Encoding": []string{"identity"},
-		}
-	}
-
-	transCfg := &http.Transport{
-		Proxy:               http.ProxyFromEnvironment,
-		TLSHandshakeTimeout: Timeout,
-	}
-	client = http.Client{
-		Transport: transCfg,
-		Timeout:   Timeout,
-		Jar:       o.CookieJar,
-	}
-
-	req := &http.Request{
-		Method:        method,
-		URL:           url,
-		Proto:         "HTTP/1.1",
-		ProtoMajor:    1,
-		ProtoMinor:    1,
-		Header:        header,
-		Body:          ioutil.NopCloser(bytes.NewReader(data)),
-		ContentLength: int64(len(body)),
-	}
-
-	if res, err = client.Do(req); err != nil {
-		return
-	}
-	defer res.Body.Close()
-
-	if res.StatusCode != http.StatusOK {
-		err = fmt.Errorf("%s %v: %s", method, url, res.Status)
-	} else if recv != nil {
-		switch format {
-		case "json":
-			err = json.NewDecoder(res.Body).Decode(recv)
-		default:
-			var rawData []byte
-			rawData, err = ioutil.ReadAll(res.Body)
-			if err != nil {
-				return
-			}
-			if err := ParseSAML(rawData, recv.(*SAMLAssertion)); err != nil {
-				return fmt.Errorf("Okta user %s does not have the AWS app added to their account.  Please contact your Okta admin to make sure things are configured properly.", o.Username)
-			}
-		}
-	}
-
 	return
 }
 
@@ -717,104 +562,4 @@ func (o *OktaClient) request(method string, path string, queryParams url.Values,
 
 	res, err = client.Do(req)
 	return
-}
-
-func (o *OktaClient) GetAwsSAML(path string, queryParams url.Values, data []byte, recv interface{}, format string) (err error) {
-	res, err := o.request("GET", path, queryParams, data, format, true)
-	if err != nil {
-		return
-	}
-	defer res.Body.Close()
-
-	if res.StatusCode != http.StatusOK {
-		err = fmt.Errorf("%s %v: %s", "GET", res.Request.URL, res.Status)
-	} else if recv != nil {
-		switch format {
-		case "json":
-			err = json.NewDecoder(res.Body).Decode(recv)
-		default:
-			var rawData []byte
-			rawData, err = ioutil.ReadAll(res.Body)
-			if err != nil {
-				return
-			}
-			if err := ParseSAML(rawData, recv.(*SAMLAssertion)); err != nil {
-				return fmt.Errorf("Okta user %s does not have the AWS app added to their account.  Please contact your Okta admin to make sure things are configured properly.", o.Username)
-			}
-		}
-	}
-
-	return
-}
-
-type OktaProvider struct {
-	Keyring         keyring.Keyring
-	ProfileARN      string
-	SessionDuration time.Duration
-	OktaAwsSAMLUrl  string
-	OktaAccountName string
-	MFAConfig       MFAConfig
-	AwsRegion       string
-}
-
-func (p *OktaProvider) Retrieve() (sts.Credentials, string, error) {
-	log.Debugf("Using okta provider (%s)", p.OktaAccountName)
-	item, err := p.Keyring.Get(p.OktaAccountName)
-	if err != nil {
-		log.Debugf("Couldnt get okta creds from keyring: %s", err)
-		return sts.Credentials{}, "", err
-	}
-
-	var oktaCreds OktaCreds
-	if err = json.Unmarshal(item.Data, &oktaCreds); err != nil {
-		return sts.Credentials{}, "", errors.New("Failed to get okta credentials from your keyring.  Please make sure you have added okta credentials with `aws-okta add`")
-	}
-
-	oktaClient, err := NewOktaClient(oktaCreds, &p.Keyring, p.MFAConfig)
-	if err != nil {
-		return sts.Credentials{}, "", err
-	}
-
-	creds, err := oktaClient.AuthenticateProfileWithRegion(p.ProfileARN, p.SessionDuration, p.OktaAwsSAMLUrl, p.AwsRegion)
-	if err != nil {
-		return sts.Credentials{}, "", err
-	}
-
-	return creds, oktaCreds.Username, err
-}
-
-func (p *OktaProvider) GetSAMLLoginURL() (*url.URL, error) {
-	item, err := p.Keyring.Get("okta-creds")
-	if err != nil {
-		log.Debugf("couldnt get okta creds from keyring: %s", err)
-		return &url.URL{}, err
-	}
-
-	var oktaCreds OktaCreds
-	if err = json.Unmarshal(item.Data, &oktaCreds); err != nil {
-		return &url.URL{}, errors.New("Failed to get okta credentials from your keyring.  Please make sure you have added okta credentials with `aws-okta add`")
-	}
-
-	var samlURL string
-
-	// maintain compatibility for deprecated creds.Organization
-	if oktaCreds.Domain == "" && oktaCreds.Organization != "" {
-		samlURL = fmt.Sprintf("%s.%s", oktaCreds.Organization, OktaServerDefault)
-	} else if oktaCreds.Domain != "" {
-		samlURL = oktaCreds.Domain
-	} else {
-		return &url.URL{}, errors.New("either oktaCreds.Organization (deprecated) or oktaCreds.Domain must be set, but not both. To remedy this, re-add your credentials with `aws-okta add`")
-	}
-
-	fullSamlURL, err := url.Parse(fmt.Sprintf(
-		"https://%s/%s",
-		samlURL,
-		p.OktaAwsSAMLUrl,
-	))
-
-	if err != nil {
-		return &url.URL{}, err
-	}
-
-	return fullSamlURL, nil
 }
