@@ -10,6 +10,8 @@ import (
 	"github.com/alessio/shellescape"
 	analytics "github.com/segmentio/analytics-go"
 	"github.com/segmentio/aws-okta/lib"
+	"github.com/segmentio/aws-okta/lib2/client"
+	"github.com/segmentio/aws-okta/lib2/provider"
 	"github.com/spf13/cobra"
 )
 
@@ -57,8 +59,7 @@ func envRun(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	opts := lib.ProviderOptions{
-		MFAConfig:          mfaConfig,
+	opts := provider.AwsSamlProviderOptions{
 		Profiles:           profiles,
 		SessionDuration:    sessionTTL,
 		AssumeRoleDuration: assumeRoleTTL,
@@ -88,7 +89,12 @@ func envRun(cmd *cobra.Command, args []string) error {
 
 	opts.SessionCacheSingleItem = flagSessionCacheSingleItem
 
-	p, err := lib.NewProvider(kr, profile, opts)
+	// get okta creds from the keychain
+	oktaCreds, err := client.GetOktaCredentialFromKeyring(kr)
+	// create an okta client for our provider
+	oktaClient, err := client.NewOktaClient(oktaCreds, &kr, mfaConfig)
+
+	p, err := provider.NewAwsSamlProvider(kr, profile, opts, oktaClient)
 	if err != nil {
 		return err
 	}
@@ -120,7 +126,7 @@ func envRun(cmd *cobra.Command, args []string) error {
 		fmt.Printf("export AWS_SECURITY_TOKEN=%s\n", shellescape.Quote(creds.SessionToken))
 	}
 
-	fmt.Printf("export AWS_OKTA_SESSION_EXPIRATION=%d\n", p.GetExpiration().Unix())
+	fmt.Printf("export AWS_OKTA_SESSION_EXPIRATION=%d\n", p.Expires.Unix())
 
 	return nil
 }

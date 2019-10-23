@@ -9,6 +9,8 @@ import (
 	"github.com/99designs/keyring"
 	analytics "github.com/segmentio/analytics-go"
 	"github.com/segmentio/aws-okta/lib"
+	"github.com/segmentio/aws-okta/lib2/client"
+	"github.com/segmentio/aws-okta/lib2/provider"
 	"github.com/spf13/cobra"
 )
 
@@ -69,8 +71,7 @@ func credProcessRun(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	opts := lib.ProviderOptions{
-		MFAConfig:          mfaConfig,
+	opts := provider.AwsSamlProviderOptions{
 		Profiles:           profiles,
 		SessionDuration:    sessionTTL,
 		AssumeRoleDuration: assumeRoleTTL,
@@ -100,7 +101,9 @@ func credProcessRun(cmd *cobra.Command, args []string) error {
 
 	opts.SessionCacheSingleItem = flagSessionCacheSingleItem
 
-	p, err := lib.NewProvider(kr, profile, opts)
+	oktaCreds, err := client.GetOktaCredentialFromKeyring(kr)
+	oktaClient, err := client.NewOktaClient(oktaCreds, &kr, mfaConfig)
+	p, err := provider.NewAwsSamlProvider(kr, profile, opts, oktaClient)
 	if err != nil {
 		return err
 	}
