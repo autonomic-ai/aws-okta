@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/segmentio/aws-okta/lib/client/types"
+	"github.com/autonomic-ai/aws-okta/lib/client/types"
 )
 
 // SMSDevice is implementation of MFADevice for SMS

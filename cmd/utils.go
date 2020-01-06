@@ -7,12 +7,12 @@ import (
 	"github.com/manifoldco/promptui"
 	"strings"
 
-	"github.com/segmentio/aws-okta/lib"
-	"github.com/segmentio/aws-okta/lib/client"
-	"github.com/segmentio/aws-okta/lib/client/mfa"
-	"github.com/segmentio/aws-okta/lib/client/types"
-	"github.com/segmentio/aws-okta/lib/provider"
-	"github.com/segmentio/aws-okta/lib/session"
+	"github.com/autonomic-ai/aws-okta/lib"
+	"github.com/autonomic-ai/aws-okta/lib/client"
+	"github.com/autonomic-ai/aws-okta/lib/client/mfa"
+	"github.com/autonomic-ai/aws-okta/lib/client/types"
+	"github.com/autonomic-ai/aws-okta/lib/provider"
+	"github.com/autonomic-ai/aws-okta/lib/session"
 
 	"golang.org/x/xerrors"
 )

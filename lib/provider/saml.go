@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/segmentio/aws-okta/lib"
+	"github.com/autonomic-ai/aws-okta/lib"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/net/html"
 )

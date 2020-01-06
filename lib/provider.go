@@ -7,7 +7,7 @@ import (
 
 	"errors"
 
-	"github.com/segmentio/aws-okta/internal/sessioncache"
+	"github.com/autonomic-ai/aws-okta/internal/sessioncache"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/99designs/keyring"

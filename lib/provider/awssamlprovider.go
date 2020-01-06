@@ -10,8 +10,8 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/segmentio/aws-okta/lib"
-	"github.com/segmentio/aws-okta/lib/session"
+	"github.com/autonomic-ai/aws-okta/lib"
+	"github.com/autonomic-ai/aws-okta/lib/session"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"

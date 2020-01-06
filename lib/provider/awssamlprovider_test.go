@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/99designs/keyring"
-	"github.com/segmentio/aws-okta/lib/session"
+	"github.com/autonomic-ai/aws-okta/lib/session"
 	"github.com/stretchr/testify/assert"
 	gock "gopkg.in/h2non/gock.v1"
 	"testing"

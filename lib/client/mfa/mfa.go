@@ -3,7 +3,7 @@ package mfa
 import (
 	"fmt"
 
-	"github.com/segmentio/aws-okta/lib/client/types"
+	"github.com/autonomic-ai/aws-okta/lib/client/types"
 )
 
 // Input is provided to get input from the user.

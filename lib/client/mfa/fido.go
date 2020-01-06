@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/segmentio/aws-okta/lib/client/types"
+	"github.com/autonomic-ai/aws-okta/lib/client/types"
 
 	log "github.com/sirupsen/logrus"
 

@@ -9,8 +9,8 @@ import (
 
 	"github.com/99designs/keyring"
 	analytics "github.com/segmentio/analytics-go"
-	"github.com/segmentio/aws-okta/lib"
-	"github.com/segmentio/aws-okta/lib/client/mfa"
+	"github.com/autonomic-ai/aws-okta/lib"
+	"github.com/autonomic-ai/aws-okta/lib/client/mfa"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"golang.org/x/xerrors"

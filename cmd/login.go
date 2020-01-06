@@ -10,8 +10,8 @@ import (
 	"time"
 
 	analytics "github.com/segmentio/analytics-go"
-	"github.com/segmentio/aws-okta/lib"
-	"github.com/segmentio/aws-okta/lib/provider"
+	"github.com/autonomic-ai/aws-okta/lib"
+	"github.com/autonomic-ai/aws-okta/lib/provider"
 	"github.com/skratchdot/open-golang/open"
 	"github.com/spf13/cobra"
 )

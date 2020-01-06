@@ -1,4 +1,4 @@
-module github.com/segmentio/aws-okta
+module github.com/autonomic-ai/aws-okta
 
 require (
 	github.com/99designs/keyring v1.0.0

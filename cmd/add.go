@@ -8,8 +8,8 @@ import (
 
 	"github.com/99designs/keyring"
 	analytics "github.com/segmentio/analytics-go"
-	"github.com/segmentio/aws-okta/lib"
-	"github.com/segmentio/aws-okta/lib/client"
+	"github.com/autonomic-ai/aws-okta/lib"
+	"github.com/autonomic-ai/aws-okta/lib/client"
 	"github.com/spf13/cobra"
 )
 

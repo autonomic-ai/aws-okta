@@ -3,8 +3,8 @@ package client
 import (
 	"fmt"
 
-	"github.com/segmentio/aws-okta/lib/client/mfa"
-	"github.com/segmentio/aws-okta/lib/client/types"
+	"github.com/autonomic-ai/aws-okta/lib/client/mfa"
+	"github.com/autonomic-ai/aws-okta/lib/client/types"
 )
 
 // type: OktaCredential struct stores Okta credentials and domain information that will

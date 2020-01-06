@@ -20,8 +20,8 @@ import (
 	"github.com/aws/aws-sdk-go/aws/endpoints"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sts"
-	"github.com/segmentio/aws-okta/lib/mfa"
-	"github.com/segmentio/aws-okta/lib/saml"
+	"github.com/autonomic-ai/aws-okta/lib/mfa"
+	"github.com/autonomic-ai/aws-okta/lib/saml"
 	log "github.com/sirupsen/logrus"
 )
 
