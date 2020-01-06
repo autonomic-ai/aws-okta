@@ -136,10 +136,6 @@ func (d *FidoClient) ChallengeU2f() (*SignedAssertion, error) {
 	interval := time.NewTicker(time.Millisecond * 250)
 	var responsePayload *SignedAssertion
 
-	err := d.Device.Open()
-	if err != nil {
-		return nil, err
-	}
 	defer func() {
 		d.Device.Close()
 	}()
