@@ -6,6 +6,7 @@
 
 VERSION := $(shell git describe --tags --always --dirty="-dev" | cut -d- -f 1)
 LDFLAGS := -ldflags='-X "main.Version=$(VERSION)"'
+SRC = $(shell find . -type f -name '*.go' -not -name '*_test.go')
 
 test:
 	GO111MODULE=on go test -mod=vendor -covermode=count -coverprofile=coverage.out -v ./...
@@ -42,10 +43,10 @@ clean:
 dist/:
 	mkdir -p dist
 
-dist/aws-okta-$(VERSION)-darwin-amd64: | dist/
+dist/aws-okta-$(VERSION)-darwin-amd64: $(SRC) | dist/
 	GOOS=darwin GOARCH=amd64 GO111MODULE=on go build -mod=vendor $(LDFLAGS) -o $@
 
-dist/aws-okta-$(VERSION)-linux-amd64: | dist/
+dist/aws-okta-$(VERSION)-linux-amd64: $(SRC) | dist/
 	GOOS=linux GOARCH=amd64 GO111MODULE=on go build -mod=vendor $(LDFLAGS) -o $@
 
 .PHONY: clean all linux darwin test
