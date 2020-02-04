@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/autonomic-ai/aws-okta/lib/client/types"
@@ -152,14 +153,14 @@ func (d *FidoClient) ChallengeU2f() (*SignedAssertion, error) {
 					ClientData:    response.ClientData,
 					SignatureData: response.SignatureData,
 				}
-				fmt.Printf("  ==> Touch accepted. Proceeding with authentication\n")
+				fmt.Fprintf(os.Stderr, "  ==> Touch accepted. Proceeding with authentication\n")
 				return responsePayload, nil
 			}
 
 			switch t := err.(type) {
 			case *u2fhost.TestOfUserPresenceRequiredError:
 				if !prompted {
-					fmt.Printf("\nTouch the flashing U2F device to authenticate...\n")
+					fmt.Fprintf(os.Stderr, "\nTouch the flashing U2F device to authenticate...\n")
 					prompted = true
 				}
 			default:
