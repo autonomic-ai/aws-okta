@@ -3,9 +3,10 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
+
 	"github.com/99designs/keyring"
 	"github.com/manifoldco/promptui"
-	"strings"
 
 	"github.com/autonomic-ai/aws-okta/lib"
 	"github.com/autonomic-ai/aws-okta/lib/client"
