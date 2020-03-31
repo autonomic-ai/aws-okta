@@ -21,6 +21,9 @@ import (
 
 const (
 	Timeout = time.Duration(60 * time.Second)
+
+	StatusPasswordExpired = "PASSWORD_EXPIRED"
+	StatusMFARequired     = "MFA_REQUIRED"
 )
 
 type OktaClientOptions struct {
@@ -257,11 +260,22 @@ func (o *OktaClient) AuthenticateUser() (err error) {
 	}
 	defer res.Body.Close()
 
-	// validate we're getting a response code we can use.
-	if res.StatusCode == http.StatusUnauthorized {
-		return fmt.Errorf("%v. %w", err, types.ErrInvalidCredentials)
-	} else if res.StatusCode != http.StatusOK {
-		return fmt.Errorf("%v. %w", err, types.ErrUnexpectedResponse)
+	// We have an error. Decode the error an display appropriate helpful message
+	if res.StatusCode != http.StatusOK {
+		var responseError types.OktaErrorResponse
+
+		err = json.NewDecoder(res.Body).Decode(&responseError)
+		if err != nil {
+			return
+		}
+
+		if res.StatusCode == http.StatusUnauthorized {
+			err = fmt.Errorf("%w: %s", types.ErrInvalidCredentials, responseError.ErrorSummary)
+		} else {
+			err = fmt.Errorf("%w: %s", types.ErrUnexpectedResponse, responseError.ErrorSummary)
+		}
+
+		return
 	}
 
 	err = json.NewDecoder(res.Body).Decode(&o.userAuth)
@@ -269,18 +283,25 @@ func (o *OktaClient) AuthenticateUser() (err error) {
 		return
 	}
 	// Step 2 : Challenge MFA if needed
-	if o.userAuth.Status == "MFA_REQUIRED" {
+	if o.userAuth.Status == StatusMFARequired {
 		log.Info("Requesting MFA. Please complete two-factor authentication with your second device")
 		if err = o.challengeMFA(); err != nil {
 			return
 		}
-	} else if o.userAuth.Status == "PASSWORD_EXPIRED" {
-		return fmt.Errorf("password is expired %w", types.ErrInvalidCredentials)
+	} else if o.userAuth.Status == StatusPasswordExpired {
+		return types.ErrPasswordExpired
 	}
 
+	// https://developer.okta.com/docs/reference/api/authn/#response-example-for-primary-authentication-with-public-application-and-expired-password
+	// Users are challenged for MFA (MFA_REQUIRED) before PASSWORD_EXPIRED if they have an active Factor enrollment.
 	if o.userAuth.SessionToken == "" {
 		log.Debug("Auth failed. Reason: Session token isn't present.")
-		return fmt.Errorf("authentication failed for %s, reason unknown try checking debug logs %w", o.creds.Username, types.ErrInvalidSession)
+
+		if o.userAuth.Status == StatusPasswordExpired {
+			return types.ErrPasswordExpired
+		}
+
+		return fmt.Errorf("unexpected auth status: %s. authentication failed for %s, reason unknown try checking debug logs %w", o.userAuth.Status, o.creds.Username, types.ErrInvalidSession)
 	}
 	return
 }

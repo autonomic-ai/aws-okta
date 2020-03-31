@@ -349,7 +349,7 @@ func TestOktaClientNoSessionCache(t *testing.T) {
 		// this would only test the unlikely case where the user doesn't have MFA setup.
 		// https://developer.okta.com/docs/reference/api/authn/#primary-authentication-with-public-application
 		err = oktaClient.AuthenticateUser()
-		assert.Equal(t, true, errors.Is(err, types.ErrInvalidCredentials), "verify we get an invalid creds error when password expired")
+		assert.Equal(t, true, errors.Is(err, types.ErrPasswordExpired), "verify we get an invalid creds error when password expired")
 	})
 
 	t.Run("session interface returns a reasonable error", func(t *testing.T) {
