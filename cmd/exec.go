@@ -237,9 +237,6 @@ func execRun(cmd *cobra.Command, args []string) error {
 
 	var waitStatus syscall.WaitStatus
 	if err := ecmd.Run(); err != nil {
-		if err != nil {
-			return err
-		}
 		if exitError, ok := err.(*exec.ExitError); ok {
 			waitStatus = exitError.Sys().(syscall.WaitStatus)
 			os.Exit(waitStatus.ExitStatus())
