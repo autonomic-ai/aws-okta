@@ -6,12 +6,12 @@ import (
 	"net/http"
 	"testing"
 
+	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	gock "gopkg.in/h2non/gock.v1"
 
 	"github.com/autonomic-ai/aws-okta/lib/client/mfa"
 	"github.com/autonomic-ai/aws-okta/lib/client/types"
-	log "github.com/sirupsen/logrus"
 )
 
 func newSessionCache() *testSessionCache {
@@ -358,9 +358,9 @@ func TestOktaClientNoSessionCache(t *testing.T) {
 			FactorType: "push",
 		}
 		err = oktaClient.AuthenticateUser()
-		assert.Equal(t, err, fmt.Errorf("Okta push verify rejected."), "verify we get an error when okta push is rejected")
+		assert.Equal(t, err, fmt.Errorf("okta push verify rejected."), "verify we get an error when okta push is rejected")
 	})
-	t.Run("test okta user auth flow with oktapush mfa timed out", func(t *testing.T) {
+	t.Run("test okta user auth flow with oktapush mfa timed out - okta timeout", func(t *testing.T) {
 		gock.New("https://canada").
 			Post("/api/v1/authn").
 			JSON(map[string]string{"username": creds.Username, "password": creds.Password}).
@@ -382,7 +382,37 @@ func TestOktaClientNoSessionCache(t *testing.T) {
 			FactorType: "push",
 		}
 		err = oktaClient.AuthenticateUser()
-		assert.Equal(t, err, fmt.Errorf("Okta push verify timed out."), "verify we get an error when okta push times out")
+		assert.Equal(t, err, fmt.Errorf("okta push verify timed out."), "verify we get an error when okta push times out")
+	})
+	t.Run("test okta user auth flow with oktapush mfa timed out - device defined timeout", func(t *testing.T) {
+		gock.New("https://canada").
+			Post("/api/v1/authn").
+			JSON(map[string]string{"username": creds.Username, "password": creds.Password}).
+			Reply(200).BodyString(oktaMFARequired("007ucIX7PATyn94hsHfOLVaXAmOBkKHWnOOLG43bsb",
+			`[ {
+        "id": "fuf8y2l4n5mfH0UWe0h7",
+        "factorType": "push",
+        "provider": "OKTA",
+        "profile": { "credentialId": "dade.murphy@example.com" }
+				} ]`))
+		// set the response code and expect it to get to Okta.
+		gock.New("https://canada").
+			Post("api/v1/authn/factors/fuf8y2l4n5mfH0UWe0h7/verify").
+			Persist().
+			JSON(map[string]string{"stateToken": "007ucIX7PATyn94hsHfOLVaXAmOBkKHWnOOLG43bsb"}).
+			Reply(200).BodyString(oktaPushWaiting("007ucIX7PATyn94hsHfOLVaXAmOBkKHWnOOLG43bsb"))
+
+		oktaClient.creds.MFA = mfa.Config{
+			Provider:   "OKTA",
+			FactorType: "push",
+		}
+		oktaClient.mfaDevices = []mfa.Device{&mfa.PushDevice{
+			PollIntervalInSeconds: 1,
+			PollTimeoutInSeconds:  2,
+		}}
+
+		err = oktaClient.AuthenticateUser()
+		assert.Equal(t, err, fmt.Errorf("timed out while waiting for user to action okta push notification."), "verify we get an error when okta push times out")
 	})
 	t.Run("test okta user auth flow with TOTP MFA invalid pass code", func(t *testing.T) {
 		gock.New("https://canada").
@@ -390,11 +420,11 @@ func TestOktaClientNoSessionCache(t *testing.T) {
 			JSON(map[string]string{"username": creds.Username, "password": creds.Password}).
 			Reply(200).BodyString(oktaMFARequired("007ucIX7PATyn94hsHfOLVaXAmOBkKHWnOOLG43bsb",
 			`[ {
-        "id": "fuf8y2l4n5mfH0UWe0h7",
-        "factorType": "token:software:totp",
-        "provider": "OKTA",
-        "profile": { "credentialId": "dade.murphy@example.com" }
-			}]`))
+		        "id": "fuf8y2l4n5mfH0UWe0h7",
+		        "factorType": "token:software:totp",
+		        "provider": "OKTA",
+		        "profile": { "credentialId": "dade.murphy@example.com" }
+					}]`))
 		// set the response code and expect it to get to Okta.
 		//		mfaInputs.Code = "invalid-pass-code"
 		//		oktaClient.selector = mfaInputs
