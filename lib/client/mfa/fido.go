@@ -32,7 +32,7 @@ func (d *FIDODevice) Supported(factor Config) error {
 	if factor.FactorType == "u2f" && factor.Provider == "FIDO" {
 		return nil
 	}
-	return fmt.Errorf("doesn't support %s %w", factor.FactorType, types.ErrNotSupported)
+	return fmt.Errorf("fido doesn't support %s %w", factor.FactorType, types.ErrNotSupported)
 }
 
 // Verify is called to get generate the payload that will be sent to Okta.

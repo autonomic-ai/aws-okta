@@ -17,7 +17,7 @@ func (d *TOTPDevice) Supported(factor Config) error {
 	if factor.FactorType == "token:software:totp" || factor.FactorType == "token:hardware" {
 		return nil
 	}
-	return fmt.Errorf("sms doesn't support %s %w", factor.FactorType, types.ErrNotSupported)
+	return fmt.Errorf("totp doesn't support %s %w", factor.FactorType, types.ErrNotSupported)
 }
 
 // Verify will prompt the user for a code then return the payload for verification
