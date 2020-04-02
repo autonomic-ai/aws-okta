@@ -4,7 +4,10 @@
 #
 # This makefile is meant for humans
 
-VERSION := $(shell git describe --tags --always --dirty="-dev" | cut -d- -f 1)
+## In concourse, before release, tag is of format 'vrc-1585761231-0.1.3-f6d7b72'
+## after release,it is of format 'v0.1.3'. Code below will work for both format
+## as cut will return the string if no delimiters are found
+VERSION := $(shell git describe --tags --always | cut -d- -f 3 | tr -d 'v')
 LDFLAGS := -ldflags='-X "main.Version=$(VERSION)"'
 
 test:
