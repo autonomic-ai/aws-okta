@@ -9,6 +9,14 @@
 ## as cut will return the string if no delimiters are found
 VERSION := $(shell git describe --tags --always | cut -d- -f 3 | tr -d 'v')
 LDFLAGS := -ldflags='-X "main.Version=$(VERSION)"'
+DARWIN_BUILD_ARGS := ""
+
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S),Linux)
+	ifneq ("$(wildcard /osxcross/target/bin/x86_64-apple-darwin14-cc)","")
+	  DARWIN_BUILD_FLAGS += CC=/osxcross/target/bin/x86_64-apple-darwin14-cc CGO_ENABLED=1
+  endif
+endif
 
 test:
 	GO111MODULE=on go test -mod=vendor -covermode=count -coverprofile=coverage.out -v ./...
@@ -46,7 +54,7 @@ dist/:
 	mkdir -p dist
 
 dist/aws-okta-$(VERSION)-darwin-amd64: | dist/
-	GOOS=darwin GOARCH=amd64 GO111MODULE=on go build -mod=vendor $(LDFLAGS) -o $@
+	$(DARWIN_BUILD_FLAGS) GOOS=darwin GOARCH=amd64 GO111MODULE=on go build -mod=vendor $(LDFLAGS) -o $@
 
 dist/aws-okta-$(VERSION)-linux-amd64: | dist/
 	GOOS=linux GOARCH=amd64 GO111MODULE=on go build -mod=vendor $(LDFLAGS) -o $@
