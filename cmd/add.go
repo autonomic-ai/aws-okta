@@ -7,9 +7,9 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"github.com/99designs/keyring"
-	analytics "github.com/segmentio/analytics-go"
 	"github.com/autonomic-ai/aws-okta/lib"
 	"github.com/autonomic-ai/aws-okta/lib/client"
+	analytics "github.com/segmentio/analytics-go"
 	"github.com/spf13/cobra"
 )
 
@@ -118,13 +118,16 @@ func add(cmd *cobra.Command, args []string) error {
 	var dummyProfiles lib.Profiles
 	updateMfaConfig(cmd, dummyProfiles, "", &mfaConfig)
 	creds.MFA = mfaConfig
-	oktaClient, err := client.NewOktaClient(creds, nil, nil, nil)
+
+	// Initialize and pass in MFAInputs below so as to avoid panic
+	// when the client attempts to use it to choose a "factor"
+	oktaClient, err := client.NewOktaClient(creds, nil, &MFAInputs{}, nil)
 	if err != nil {
 		return err
 	}
 	if err := oktaClient.AuthenticateUser(); err != nil {
 		log.Debugf("Failed to validate credentials: %s", err)
-		return ErrFailedToValidateCredentials
+		return fmt.Errorf("%w: %s", ErrFailedToValidateCredentials, err)
 	}
 
 	encoded, err := json.Marshal(creds)

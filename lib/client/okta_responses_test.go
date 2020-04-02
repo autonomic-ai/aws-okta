@@ -155,3 +155,69 @@ func oktaPasswordExpired(stateToken string) string {
   }
 }`, stateToken)
 }
+
+func oktaPushRejected(sessionToken string) string {
+	return fmt.Sprintf(`{
+  "stateToken": "%s",
+  "expiresAt": "2015-11-03T10:15:57.000Z",
+  "status": "MFA_CHALLENGE",
+  "factorResult": "REJECTED",
+  "_embedded": {
+    "user": {
+      "id": "00ub0oNGTSWTBKOLGLNR",
+      "passwordChanged": "2015-09-08T20:14:45.000Z",
+      "profile": {
+        "login": "dade.murphy@example.com",
+        "firstName": "Dade",
+        "lastName": "Murphy",
+        "locale": "en_US",
+        "timeZone": "America/Los_Angeles"
+      }
+    },
+    "factors": [{
+      "id": "fuf8y2l4n5mfH0UWe0h7",
+      "factorType": "push",
+      "provider": "OKTA",
+      "profile": {
+        "deviceType": "SmartPhone_IPhone",
+        "name": "Gibson",
+        "platform": "IOS",
+        "version": "9.0"
+      }
+    }]
+  }
+}`, sessionToken)
+}
+
+func oktaPushTimedOut(sessionToken string) string {
+	return fmt.Sprintf(`{
+  "stateToken": "%s",
+  "expiresAt": "2015-11-03T10:15:57.000Z",
+  "status": "MFA_CHALLENGE",
+  "factorResult": "TIMEOUT",
+  "_embedded": {
+    "user": {
+      "id": "00ub0oNGTSWTBKOLGLNR",
+      "passwordChanged": "2015-09-08T20:14:45.000Z",
+      "profile": {
+        "login": "dade.murphy@example.com",
+        "firstName": "Dade",
+        "lastName": "Murphy",
+        "locale": "en_US",
+        "timeZone": "America/Los_Angeles"
+      }
+    },
+    "factors": [{
+      "id": "fuf8y2l4n5mfH0UWe0h7",
+      "factorType": "push",
+      "provider": "OKTA",
+      "profile": {
+        "deviceType": "SmartPhone_IPhone",
+        "name": "Gibson",
+        "platform": "IOS",
+        "version": "9.0"
+      }
+    }]
+  }
+}`, sessionToken)
+}
