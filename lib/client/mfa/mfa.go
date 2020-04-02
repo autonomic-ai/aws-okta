@@ -48,7 +48,7 @@ func DefaultDevices(input Input, mfaConfig Config) []Device {
 	devices = append(devices, &TOTPDevice{userInput: input})
 	devices = append(devices, &FIDODevice{})
 	devices = append(devices, &DUODevice{duoMFADevice: mfaConfig.DuoDevice})
-	devices = append(devices, &PushDevice{})
+	devices = append(devices, NewPushDevice())
 	return devices
 }
 
