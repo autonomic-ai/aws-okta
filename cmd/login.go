@@ -9,7 +9,6 @@ import (
 	"os"
 	"time"
 
-	analytics "github.com/segmentio/analytics-go"
 	"github.com/autonomic-ai/aws-okta/lib"
 	"github.com/autonomic-ai/aws-okta/lib/provider"
 	"github.com/skratchdot/open-golang/open"
@@ -83,18 +82,6 @@ func loginRun(cmd *cobra.Command, args []string) error {
 		Profiles:           profiles,
 		SessionDuration:    sessionTTL,
 		AssumeRoleDuration: assumeRoleTTL,
-	}
-
-	if analyticsEnabled && analyticsClient != nil {
-		analyticsClient.Enqueue(analytics.Track{
-			UserId: username,
-			Event:  "Ran Command",
-			Properties: analytics.NewProperties().
-				Set("backend", backend).
-				Set("aws-okta-version", version).
-				Set("profile", profile).
-				Set("command", "login"),
-		})
 	}
 
 	p, err := createAWSSAMLProvider(backend, mfaConfig, profile, opts)

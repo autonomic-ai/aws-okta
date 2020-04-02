@@ -12,7 +12,6 @@ import (
 	"syscall"
 	"time"
 
-	analytics "github.com/segmentio/analytics-go"
 	"github.com/autonomic-ai/aws-okta/lib"
 	"github.com/autonomic-ai/aws-okta/lib/provider"
 	"github.com/spf13/cobra"
@@ -162,18 +161,6 @@ func execRun(cmd *cobra.Command, args []string) error {
 		SessionDuration:    sessionTTL,
 		AssumeRoleDuration: assumeRoleTTL,
 		AssumeRoleArn:      assumeRoleARN,
-	}
-
-	if analyticsEnabled && analyticsClient != nil {
-		analyticsClient.Enqueue(analytics.Track{
-			UserId: username,
-			Event:  "Ran Command",
-			Properties: analytics.NewProperties().
-				Set("backend", backend).
-				Set("aws-okta-version", version).
-				Set("profile", profile).
-				Set("command", "exec"),
-		})
 	}
 
 	p, err := createAWSSAMLProvider(backend, mfaConfig, profile, opts)

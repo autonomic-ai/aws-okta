@@ -12,7 +12,6 @@ require (
 	github.com/marshallbrekka/go-u2fhost v0.0.0-20200114212649-cc764c209ee9
 	github.com/mattn/go-zglob v0.0.1 // indirect
 	github.com/mitchellh/go-homedir v1.1.0
-	github.com/segmentio/analytics-go v3.1.0+incompatible
 	github.com/segmentio/backo-go v0.0.0-20200129164019-23eae7c10bd3 // indirect
 	github.com/sirupsen/logrus v1.4.2
 	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966

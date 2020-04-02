@@ -8,7 +8,6 @@ import (
 	"errors"
 
 	"github.com/99designs/keyring"
-	analytics "github.com/segmentio/analytics-go"
 	"github.com/autonomic-ai/aws-okta/lib"
 	"github.com/autonomic-ai/aws-okta/lib/client/mfa"
 	log "github.com/sirupsen/logrus"
@@ -36,9 +35,6 @@ var (
 	mfaConfig                  mfa.Config
 	debug                      bool
 	version                    string
-	analyticsWriteKey          string
-	analyticsEnabled           bool
-	analyticsClient            analytics.Client
 	username                   string
 	flagSessionCacheSingleItem bool
 )
@@ -52,15 +48,12 @@ var RootCmd = &cobra.Command{
 	SilenceUsage:      true,
 	SilenceErrors:     true,
 	PersistentPreRunE: prerunE,
-	PersistentPostRun: postrun,
 }
 
 // Execute adds all child commands to the root command sets flags appropriately.
 // This is called by main.main(). It only needs to happen once to the rootCmd.
-func Execute(vers string, writeKey string) {
+func Execute(vers string) {
 	version = vers
-	analyticsWriteKey = writeKey
-	analyticsEnabled = analyticsWriteKey != ""
 	if err := RootCmd.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "%s\n", err)
 		switch err {
@@ -95,26 +88,7 @@ func prerunE(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	if analyticsEnabled {
-		// set up analytics client
-		analyticsClient, _ = analytics.NewWithConfig(analyticsWriteKey, analytics.Config{
-			BatchSize: 1,
-		})
-
-		usr := os.Getenv("USER")
-		analyticsClient.Enqueue(analytics.Identify{
-			UserId: usr,
-			Traits: analytics.NewTraits().
-				Set("aws-okta-version", version),
-		})
-	}
 	return nil
-}
-
-func postrun(cmd *cobra.Command, args []string) {
-	if analyticsEnabled && analyticsClient != nil {
-		analyticsClient.Close()
-	}
 }
 
 func init() {
