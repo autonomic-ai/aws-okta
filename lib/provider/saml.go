@@ -116,6 +116,11 @@ func GetAssumableRolesFromSAML(resp *Response) (AssumableRoles, error) {
 			}
 		}
 	}
+
+	sort.SliceStable(roleList, func(i, j int) bool {
+		return roleList[i].Role < roleList[j].Role
+	})
+
 	return roleList, nil
 }
 
