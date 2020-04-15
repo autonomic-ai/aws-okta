@@ -18,6 +18,7 @@ import (
 	aws_session "github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sts"
 	log "github.com/sirupsen/logrus"
+
 	// use xerrors until 1.13 is stable/oldest supported version
 	"golang.org/x/xerrors"
 )
@@ -412,7 +413,7 @@ func (p *AWSSAMLProvider) authenticateProfileWithRegion(profileARN string, durat
 			return sts.Credentials{}, fmt.Errorf("invalid role arn passed in by configuration: %s", profileARN)
 		}
 	} else {
-		roleIndex, err := p.selector.ChooseRole(roles)
+		roleIndex, err = p.selector.ChooseRole(roles)
 		if err != nil {
 			return sts.Credentials{}, err
 		}
