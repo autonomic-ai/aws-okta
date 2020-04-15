@@ -70,3 +70,25 @@ ebcb13952cb9a4a4bb1f125bd5eede9f6f730f0a
 
 9f13d21d396f9056b5ca85fd7255c8637ffdc7b5 ## test session tokens
 ff434abd63d80ef39bedc8653bf0795e838a0e06 ## test session tokens
+cc1ad51754bd40ae46f825fce8ccba349fe16269 ## saml url
+bef583ed88074959e3e5de047c2e4da05f1a9303 ## test saml
+c655b73020baee0310f4d615e42f7cc26b6d251b ## test saml
+9c7bfcf5a329d73b2c15025c199bb8fb4173f94c ## go.sum checksum
+176cf8e2b8c6f8bd63f9bcbd397771825d75f0a1 ## go.sum checksum
+c2ff02d63d01ecec14e459b063e15534e8038294 ## go.sum checksum
+c82f6f5373585ee67d6a62e7d3c2c059ad272939 ## go.sum checksum
+4527b55eb986ba1ddb02d576af1ad4683a145eb8 ## go.sum checksum
+f27ae401fecef07aa44e00bfb515fc78d6c9e7b6 ## go.sum checksum
+b63e3e463729a11b63f59ba8afc534f4890d24c5 ## go.sum checksum
+d456edd4a316709dc9c951711debd20de3fa02b9 ## go.sum checksum
+38fee5dc99bb6eb260487db085deb26e5c2d174a ## go.sum checksum
+e68d4e011a226789abd5e442576d9e43120e698c ## go.sum checksum
+f08492f3cdb1616a9bd7214864b51b85adac2647 ## go.sum checksum
+c274b07b8342756e4c23162c19ca41378d25a30b ## go.mod version
+da40dacad458dc64f3524ee74a2aaf588736f2b5 ## go.mod version
+c132e6b024184d74f33e3b4fcbfcc64757923984 ## go.mod version
+27ad80e88afc5d8fc7f498a6d487d5c0c0d19b5c ## go.mod version
+9797854a804c2edb5d41fc489ee92dfd28b55b3b ## go.mod version
+a7efb1f0e4253d7e033c1b00c1e01595b18a1e0c ## go.mod version
+
+b174616315118a6a4be1df6a5d6c42f3e2c17912 ## well known uuids
