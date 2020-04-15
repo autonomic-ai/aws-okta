@@ -3,6 +3,7 @@ package mfa
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/autonomic-ai/aws-okta/lib/client/types"
@@ -59,6 +60,7 @@ func (d *PushDevice) Verify(authResp types.OktaUserAuthn) (string, []byte, error
 		if d.PollTimeoutInSeconds == 0 {
 			d.PollTimeoutInSeconds = OktaPushDefaultPollTimeoutInSeconds
 		}
+		fmt.Fprintf(os.Stderr, "\nApprove the push notification on your Okta Verify app...\n")
 	case StatusMFAChallenge:
 		switch authResp.FactorResult {
 		case ResultRejected:
