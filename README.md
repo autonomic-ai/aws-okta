@@ -7,22 +7,14 @@
 If you have a functional go environment, you can install with:
 
 ```bash
-$ go get github.com/segmentio/aws-okta
+$ go get github.com/autonomic-ai/aws-okta
 ```
 
 [See the wiki for more installation options like Linux packages and precompiled binaries.](https://github.com/segmentio/aws-okta/wiki/Installation)
 
-### MacOS
+### MacOS and Linux
 
-You can install with `brew`:
-
-```bash
-$ brew install aws-okta
-```
-
-### Windows
-
-See [docs/windows.md](docs/windows.md) for information on getting this working with Windows.
+Download a precompiled binary from [releases](https://github.com/autonomic-ai/aws-okta/releases)
 
 ## Usage
 
