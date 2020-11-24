@@ -10,6 +10,15 @@ If you have a functional go environment, you can install with:
 $ go get github.com/autonomic-ai/aws-okta
 ```
 
+This assume you have the Go bin directories in your path:
+
+```bash
+eval $(go env)
+export GOROOT
+export GOPATH
+export PATH="$PATH:$GOROOT/bin:$GOPATH/bin"
+```
+
 [See the wiki for more installation options like Linux packages and precompiled binaries.](https://github.com/segmentio/aws-okta/wiki/Installation)
 
 ### MacOS and Linux
